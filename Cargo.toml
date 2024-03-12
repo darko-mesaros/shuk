@@ -1,0 +1,22 @@
+[package]
+name = "shuk"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.80"
+aws-config = "1.1.7"
+aws-sdk-s3 = { version = "1.17.0", features = ["rt-tokio"] }
+aws-smithy-runtime-api = { version = "1.1.7", features = ["client"] }
+aws-smithy-types = { version = "1.1.7", features = ["http-body-0-4-x"] }
+aws-types = "1.1.7"
+bytes = "1.5.0"
+http = "0.2.12"
+http-body = "0.4.6"
+indicatif = "0.17.8"
+pin-project = "1.1.5"
+tokio = { version = "1.36.0", features = ["full"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
