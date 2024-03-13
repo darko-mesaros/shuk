@@ -4,17 +4,34 @@
 
 *Shuk* is used to upload files to [Amazon S3](https://aws.amazon.com/s3/) and have them shared with others.
 
-## Usage
+## Usage 🔧
 
-You need to have two things:
-- a file named `testfile` in the root directory
-- a bucket named `aws-darko-assets` (or change the source code to your bucket of choice)
+The file `shuk.toml` needs to contain two bits of information: 
+- The bucket name of the bucket you wish to upload to
+- Expiration time of your presigned objects
 
-Just run `cargo run` and you should be fine.
+Just pass the filename as the argument to `shuk`:
+```bash
+cargo run filename.bla
+```
 
-## Version Log
+## TODO 📋
+
+[x] Presign files so we can share
+[ ] Ability to delete objects
+[ ] Ability to archive objects
+[ ] Have the progress bar remain on screen, or show summary of upload.
+[ ] Install the configuration files in the users `.config` directory
+
+## Version Log 📜
 
 ### 0.0.1
 
 - Basic functionality
 - Uploads fixed files to fixed buckets
+
+### 0.2.0
+
+- Can now parse filename from arguments
+- We have a configuration file for bucket name
+- Can presign file when uploaded.
