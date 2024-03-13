@@ -4,7 +4,6 @@ use std::{
     pin::Pin,
     path::{Path,PathBuf}, 
     task::{Context,Poll},
-    time::Duration,
 };
 use aws_sdk_s3::{
     primitives::{
@@ -14,10 +13,8 @@ use aws_sdk_s3::{
     Client
 };
 use aws_smithy_runtime_api::http::Request;
-use aws_sdk_s3::presigning::PresigningConfig;
 
 use bytes::Bytes;
-use http::request;
 use http_body::{Body, SizeHint};
 
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
