@@ -17,11 +17,11 @@ cargo run filename.bla
 
 ## TODO 📋
 
-[x] Presign files so we can share
-[ ] Ability to delete objects
-[ ] Ability to archive objects
-[ ] Have the progress bar remain on screen, or show summary of upload.
-[ ] Install the configuration files in the users `.config` directory
+- [x] Presign files so we can share
+- [ ] Ability to delete objects
+- [ ] Ability to archive objects
+- [ ] Have the progress bar remain on screen, or show summary of upload.
+- [ ] Install the configuration files in the users `.config` directory
 
 ## Version Log 📜
 
