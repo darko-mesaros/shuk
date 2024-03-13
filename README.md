@@ -1,8 +1,8 @@
-# Shuk
+# Shuk 💾 ➡️ 🪣
 
 ![screenshot of shuk](/img/shuk.png)
 
-**ALPHA SOFTWARE**
+⚠️**ALPHA SOFTWARE**⚠️
 
 *Shuk* is used to upload files to [Amazon S3](https://aws.amazon.com/s3/) and have them shared with others.
 
