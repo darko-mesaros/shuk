@@ -1,6 +1,6 @@
 [package]
 name = "shuk"
-version = "0.0.1"
+version = "0.2.0"
 edition = "2021"
 authors = ["Darko Mesaros <d@rko.rs>"]
 
@@ -14,10 +14,14 @@ aws-smithy-runtime-api = { version = "1.1.7", features = ["client"] }
 aws-smithy-types = { version = "1.1.7", features = ["http-body-0-4-x"] }
 aws-types = "1.1.7"
 bytes = "1.5.0"
+clap = { version = "4.5.2", features = ["derive"] }
 http = "0.2.12"
 http-body = "0.4.6"
 indicatif = "0.17.8"
 pin-project = "1.1.5"
+serde = { version = "1.0.197", features = ["derive"] }
+serde_derive = "1.0.197"
 tokio = { version = "1.36.0", features = ["full"] }
+toml = "0.8.11"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
