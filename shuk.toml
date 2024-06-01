@@ -1,2 +1,4 @@
 bucket_name = "aws-darko-videos"
+bucket_prefix = "shuk"
 presigned_time = 86400
+aws_profile = "default"

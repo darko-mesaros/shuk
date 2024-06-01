@@ -9,13 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## TODO 📋
 
-- TODO: Presign files so we can share
 - TODO: Ability to delete objects
 - TODO: Ability to archive objects
 - TODO: Have the progress bar remain on screen, or show summary of upload.
 - TODO: Install the configuration files in the users `.config` directory
-- TODO: Clean up the upload function so it one function instead of two.
 - TODO: Have the ability to configure the chunk size for multi-part uploads
+- TODO: User configurable tags
+
+## [0.3.1] - 2024-06-01
+### Added
+- AWS Profile selection from the config file
+- The uploaded objects are now tagged with `deployed_by:shuk`
+- Added the ability to define a prefix (folder) where to upload the files
+
+### Changed
+- Uses the AWS region from the profile first, then falls back to `us-west-2`
+- Cleaned up the upload function, now its only a single one with the logic inside.
+- Improved the path handling (works with non UTF-8 characters)
 
 ## [0.3.0] - 2024-05-31
 ### Added
