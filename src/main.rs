@@ -3,8 +3,10 @@ pub mod upload;
 pub mod file_management;
 
 use upload::upload_object;
+use upload::upload_multipart_object;
 use tracing::Level;
 use clap::Parser;
+use std::fs::File;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error>{
@@ -22,7 +24,16 @@ async fn main() -> Result<(), anyhow::Error>{
     let key = arguments.filename.clone();
     let file_name = arguments.filename;
 
-    upload_object(&s3_client, &shuk_config.bucket_name, &file_name, &key.to_str().unwrap(), shuk_config.presigned_time).await?;
+    let file = File::open(&file_name).expect("Failed to open file");
+    let metadata = file.metadata().expect("Failed to get file metadata");
+    let file_size = metadata.len();
+
+    // If file is bigger than 4GB
+    if file_size > 4294967296 {
+        upload_multipart_object(&s3_client, &shuk_config.bucket_name, &file_name, key.to_str().unwrap(), shuk_config.presigned_time).await?;
+    } else {
+        upload_object(&s3_client, &shuk_config.bucket_name, &file_name, key.to_str().unwrap(), shuk_config.presigned_time).await?;
+    }
 
     Ok(())
 }
