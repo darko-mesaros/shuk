@@ -151,8 +151,8 @@ pub async fn upload_multipart_object(client: &Client, bucket_name: &str, file_na
 
     // PRINTING FILE / BUCKET INFORMATION:
     println!("========================================");
-    println!("💾 File size is bigger than 4GB");
-    println!("💾 Using multi-part upload");
+    println!("💾 | File size is bigger than 4GB");
+    println!("💾 | Using multi-part upload");
     println!("🚀 | Uploading file: {}, to S3 Bucket: {} | 🚀", key, bucket_name);
     println!("========================================");
 
