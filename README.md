@@ -16,24 +16,3 @@ Just pass the filename as the argument to `shuk`:
 ```bash
 cargo run filename.bla
 ```
-
-## TODO 📋
-
-- [x] Presign files so we can share
-- [ ] Ability to delete objects
-- [ ] Ability to archive objects
-- [ ] Have the progress bar remain on screen, or show summary of upload.
-- [ ] Install the configuration files in the users `.config` directory
-
-## Version Log 📜
-
-### 0.0.1
-
-- Basic functionality
-- Uploads fixed files to fixed buckets
-
-### 0.2.0
-
-- Can now parse filename from arguments
-- We have a configuration file for bucket name
-- Can presign file when uploaded.
