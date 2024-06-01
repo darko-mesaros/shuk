@@ -4,7 +4,7 @@
 
 ⚠️**ALPHA SOFTWARE**⚠️
 
-*Shuk* is used to upload files to [Amazon S3](https://aws.amazon.com/s3/) and have them shared with others.
+*Shuk* is used to upload files *of any size* to [Amazon S3](https://aws.amazon.com/s3/) and have them shared with others.
 
 ## Usage 🔧
 
