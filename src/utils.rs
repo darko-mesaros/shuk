@@ -7,6 +7,8 @@ use aws_types::region::Region;
 
 use std::env;
 use std::fs;
+use std::io;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::exit;
 use tracing::Level;
@@ -16,6 +18,11 @@ use clap::Parser;
 
 use serde::Deserialize;
 use serde::Deserializer;
+use serde::Serialize;
+
+use crate::constants;
+use colored::*;
+use dirs::home_dir;
 
 //======================================== TRACING
 pub fn configure_tracing(level: Level) {
@@ -68,7 +75,7 @@ pub async fn configure_aws(fallback_region: String, profile_name: String) -> aws
 //tell them to run `shuk --init` and then just ask for the bucketname.
 //For the `--init` option, create the configuration file in the users
 //`.config` directory from a `CONST` right here in the code.
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Config {
     pub bucket_name: String,
     #[serde(deserialize_with = "deserialize_prefix")]
@@ -97,24 +104,96 @@ where
 }
 
 impl Config {
-    pub fn load_config(filename: String) -> Result<Self, anyhow::Error> {
-        let _contents: String = match fs::read_to_string(filename) {
-            Ok(c) => {
-                let config: Config = toml::from_str::<Config>(&c).unwrap();
-                return Ok(config);
-            }
-            Err(e) => {
-                eprintln!("Could not read config file! {}", e);
-                exit(1);
-            }
-        };
+    pub fn load_config() -> Result<Self, anyhow::Error> {
+        let home_dir = home_dir().expect("Failed to get HOME directory");
+        let config_dir = home_dir.join(".config/shuk");
+        let config_file_path = config_dir.join(constants::CONFIG_FILE_NAME);
+
+        if check_for_config() {
+            let _contents: String = match fs::read_to_string(config_file_path) {
+                Ok(c) => {
+                    let config: Config = toml::from_str::<Config>(&c).unwrap();
+                    return Ok(config);
+                }
+                Err(e) => {
+                    eprintln!("Could not read config file! {}", e);
+                    eprintln!("Your configuration file needs to be in $HOME/.config/shuk/shuk.toml; Please run the configuration command: shuk --init");
+                    exit(1);
+                }
+            };
+        } else {
+            eprintln!("Could not read config file!");
+            eprintln!("Your configuration file needs to be in $HOME/.config/shuk/shuk.toml; Please run the configuration command: shuk --init");
+            exit(1);
+        }
     }
 }
 //======================================== END CONFIG PARSING
+//
+pub fn check_for_config() -> bool {
+    let home_dir = home_dir().expect("Failed to get HOME directory");
+    let config_dir = home_dir.join(".config/shuk");
+    let config_file_path = config_dir.join("shuk.toml");
+
+    // returns true or false
+    match config_file_path.try_exists() {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("Was unable to determine if the config file exists: {}", e);
+            exit(1);
+        }
+    }
+}
+
+// function that creates the configuration files during the `init` command
+pub fn initialize_config() -> Result<(), anyhow::Error> {
+    let home_dir = home_dir().expect("Failed to get HOME directory");
+    let config_dir = home_dir.join(format!(".config/{}", constants::CONFIG_DIR_NAME));
+    fs::create_dir_all(&config_dir)?;
+
+    let config_file_path = config_dir.join(constants::CONFIG_FILE_NAME);
+    let config_content = constants::CONFIG_FILE.to_string();
+
+    let mut default_config: Config =
+        toml::from_str::<Config>(&config_content).expect("default config must be valid");
+
+    // Prompt the user for details
+    let mut bucket_name = String::new();
+    print!("Enter the name of the bucket you wish to use for file uploads: ");
+    io::stdout().flush()?; // so the answers are typed on the same line as above
+    io::stdin().read_line(&mut bucket_name)?;
+    default_config.bucket_name = bucket_name.trim().to_string();
+
+    let mut bucket_prefix = String::new();
+    print!("Enter the prefix (folder) in that bucket where the files will be uploaded (leave blank for the root of the bucket): ");
+    io::stdout().flush()?; // so the answers are typed on the same line as above
+    io::stdin().read_line(&mut bucket_prefix)?;
+    default_config.bucket_prefix = Some(bucket_prefix.trim().to_string());
+
+    fs::write(&config_file_path, toml::to_string_pretty(&default_config)?)?;
+    println!(
+        "⏳| Shuk configuration file created at: {:?}",
+        config_file_path
+    );
+    println!("This file is used to store configuration items for the shuk application.");
+
+    println!("✅ | Shuk configuration has been initialized in ~/.config/shuk. You may now use it as normal.");
+    Ok(())
+}
+
+pub fn print_warning(s: &str) {
+    println!("{}", s.yellow());
+}
+
 //======================================== ARGUMENT PARSING
 #[derive(Parser, Default)]
 #[command(version, about, long_about = None)]
 pub struct Args {
-    pub filename: PathBuf,
+    #[arg(required_unless_present("init"))]
+    pub filename: Option<PathBuf>,
+    // the init flag. So we can copy the config files locally
+    #[arg(long, conflicts_with("filename"))]
+    pub init: bool,
+    //pub filename: Option<PathBuf>,
 }
-//======================================== END ARGUMENT PARSING
+//=========================ALPHA=============== END ARGUMENT PARSING
