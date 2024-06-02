@@ -1,8 +1,19 @@
 [package]
 name = "shuk"
-version = "0.3.1"
+description = "A command line tool that uploads files to Amazon S3 buckets, and generats presigned URLs for easy sharing."
+version = "0.4.0"
 edition = "2021"
 authors = ["Darko Mesaros <d@rko.rs>"]
+license = "MIT OR Apache-2.0"
+keywords = ["aws", "s3", "filesharing"]
+categories = ["command-line-utilities", "aws"]
+readme = "README.md"
+homepage = "https://rup12.net"
+repository = "https://github.com/darko-mesaros/shuk"
+exclude = [
+"img/*"
+]
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -15,6 +26,8 @@ aws-smithy-types = { version = "1.1.7", features = ["http-body-0-4-x"] }
 aws-types = "1.1.7"
 bytes = "1.5.0"
 clap = { version = "4.5.2", features = ["derive"] }
+colored = "2.1.0"
+dirs = "5.0.1"
 http = "0.2.12"
 http-body = "0.4.6"
 indicatif = "0.17.8"

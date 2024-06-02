@@ -12,9 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TODO: Ability to delete objects
 - TODO: Ability to archive objects
 - TODO: Have the progress bar remain on screen, or show summary of upload.
-- TODO: Install the configuration files in the users `.config` directory
 - TODO: Have the ability to configure the chunk size for multi-part uploads
 - TODO: User configurable tags
+
+## [0.4.0] - 2024-06-01
+### Added
+- The tool is now able to be installed and configured locally.
+- You can run `--init` to set up the local configuration file in `~/.config/shuk`
+
 
 ## [0.3.1] - 2024-06-01
 ### Added
