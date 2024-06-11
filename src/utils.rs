@@ -37,27 +37,39 @@ pub fn configure_tracing(level: Level) {
 }
 //======================================== END TRACING
 //======================================== AWS
-pub async fn configure_aws(fallback_region: String, profile_name: String) -> aws_config::SdkConfig {
+pub async fn configure_aws(fallback_region: &str, profile_name: Option<String>) -> aws_config::SdkConfig {
+    // FIX: 
+    // This does not really work on different regions other than us-west-2 (or the region provided
+    // in the main.rs)
     let region_provider =
         // NOTE: this is different than the default Rust SDK behavior which checks AWS_REGION first. Is this intentional?
         RegionProviderChain::first_try(env::var("AWS_DEFAULT_REGION").ok().map(Region::new))
             .or_default_provider()
-            .or_else(Region::new(fallback_region));
+            .or_else(Region::new(fallback_region.to_string()));
+
 
     // NOTE: This checks, ENV first, then profile, then it falls back to the whatever the default
     // is
-    let provider = CredentialsProviderChain::first_try(
+
+    // Try this first
+    let mut provider = CredentialsProviderChain::first_try(
         "Environment",
         EnvironmentVariableCredentialsProvider::new(),
-    )
-    .or_else(
-        "Profile",
-        ProfileFileCredentialsProvider::builder()
-            .profile_name(profile_name)
-            .build(),
-    )
-    .or_default_provider()
-    .await;
+    );
+
+    // if profile_name is set (if it is not None)
+    if let Some(profile_name) = profile_name {
+        provider = provider
+            .or_else( // if the profile_name is empty it still configures it as such
+                "Profile",
+                ProfileFileCredentialsProvider::builder()
+                    .profile_name(profile_name) // what if the profile_name is empty?
+                    .build(),
+            );
+
+    };
+
+    let provider = provider.or_default_provider().await;
 
     aws_config::defaults(BehaviorVersion::latest())
         .credentials_provider(provider)
@@ -75,13 +87,13 @@ pub async fn configure_aws(fallback_region: String, profile_name: String) -> aws
 //tell them to run `shuk --init` and then just ask for the bucketname.
 //For the `--init` option, create the configuration file in the users
 //`.config` directory from a `CONST` right here in the code.
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
     pub bucket_name: String,
     #[serde(deserialize_with = "deserialize_prefix")]
     pub bucket_prefix: Option<String>,
     pub presigned_time: u64,
-    pub aws_profile: String,
+    pub aws_profile: Option<String>,
 }
 
 // This function exists so we can append "/" to any prefix we read from the configuration file.
@@ -146,7 +158,7 @@ pub fn check_for_config() -> bool {
 }
 
 // function that creates the configuration files during the `init` command
-pub fn initialize_config() -> Result<(), anyhow::Error> {
+pub async fn initialize_config() -> Result<(), anyhow::Error> {
     let home_dir = home_dir().expect("Failed to get HOME directory");
     let config_dir = home_dir.join(format!(".config/{}", constants::CONFIG_DIR_NAME));
     fs::create_dir_all(&config_dir)?;
@@ -169,6 +181,17 @@ pub fn initialize_config() -> Result<(), anyhow::Error> {
     io::stdout().flush()?; // so the answers are typed on the same line as above
     io::stdin().read_line(&mut bucket_prefix)?;
     default_config.bucket_prefix = Some(bucket_prefix.trim().to_string());
+
+    let mut config_profile = String::new();
+    print!("Enter the AWS profile name (enter for None): ");
+    io::stdout().flush()?; // so the answers are typed on the same line as above
+    io::stdin().read_line(&mut config_profile)?;
+    let config_profile = config_profile.trim();
+    default_config.aws_profile = if config_profile.is_empty() {
+        None
+    } else {
+        Some(config_profile.to_string())
+    };
 
     fs::write(&config_file_path, toml::to_string_pretty(&default_config)?)?;
     println!(

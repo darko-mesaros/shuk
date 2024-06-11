@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TODO: Have the ability to configure the chunk size for multi-part uploads
 - TODO: User configurable tags
 
+## [0.4.1] - 2024-06-10
+### Changed
+- Improved the way we read and write the AWS Profile
+- Fixed the way we write to the `shuk.toml` config file
+
+### Thanks <3
+- kaumnen
+- noc7c9
+- Research_DEV
+
 ## [0.4.0] - 2024-06-01
 ### Added
 - The tool is now able to be installed and configured locally.
