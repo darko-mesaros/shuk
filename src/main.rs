@@ -42,13 +42,13 @@ async fn main() -> Result<(), anyhow::Error> {
                 if confirmation.trim().eq_ignore_ascii_case("y") {
                     println!("----------------------------------------");
                     println!("📜 | Initializing Shuk configuration.");
-                    initialize_config()?;
+                    initialize_config().await?;
                 }
             }
         } else {
             println!("----------------------------------------");
             println!("📜 | Initializing Shuk configuration.");
-            initialize_config()?;
+            initialize_config().await?;
         }
         print_warning("Shuk will now exit");
         std::process::exit(0);
@@ -57,7 +57,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // parse configuration
     let shuk_config = utils::Config::load_config()?;
     // configure aws
-    let config = utils::configure_aws("us-west-2".into(), shuk_config.aws_profile).await;
+    let config = utils::configure_aws("us-west-2", shuk_config.aws_profile).await;
     // setup the bedrock-runtime client
     let s3_client = aws_sdk_s3::Client::new(&config);
 

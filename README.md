@@ -40,7 +40,7 @@ All the configuration is located in the `$HOME/.config/shuk.shuk.toml` file.
 bucket_name = "alan-ford-bucket"
 # The prefix (folder) for the uploads. Leave blank "" for the root of the bucket
 bucket_prefix = "shuk"
-# Lenght of time in seconds on how long will the presigned URL be valid for
+# Length of time in seconds on how long will the presigned URL be valid for
 presigned_time = 86400
 # The AWS profile shuk will use
 aws_profile = "default"
