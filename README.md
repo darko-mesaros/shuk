@@ -45,7 +45,7 @@ presigned_time = 86400
 # The AWS profile shuk will use
 aws_profile = "default"
 # Should the presigned URL be stored directly to the clipboard or not
-use_clipboard = fals
+use_clipboard = false
 ```
 
 To automatically configure this file just run `shuk --init`
