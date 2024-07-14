@@ -44,6 +44,12 @@ bucket_prefix = "shuk"
 presigned_time = 86400
 # The AWS profile shuk will use
 aws_profile = "default"
+# Should the presigned URL be stored directly to the clipboard or not
+use_clipboard = fals
 ```
 
 To automatically configure this file just run `shuk --init`
+
+## Build Notes
+
+- For the `use_clipboard` feature to compile on X11, you need the `xorg-dev` library.

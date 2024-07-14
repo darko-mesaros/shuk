@@ -23,7 +23,7 @@ use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 
 use tracing::{debug, info};
 
-use crate::constants;
+use crate::{constants, utils};
 use crate::file_management;
 
 // NOTE: Anything smaller than 5MB causes the uploads to be slow(er)
@@ -149,6 +149,7 @@ pub async fn upload_object(
     prefix: Option<String>,
     key: &str,
     presigned_time: u64,
+    clipboard: Option<bool>,
 ) -> Result<(), anyhow::Error> {
     // Getting file info so we can determine if we will do multi-part or not
     let mut file = File::open(file_name).expect("Failed to open file");
@@ -284,6 +285,12 @@ pub async fn upload_object(
     println!("========================================");
     println!("📋 | Good job, here is your file: ");
     println!("📋 | {}", presigned_url);
+
+    // if the clipboard is set to true, save to the system clipboard.
+    // if not or not even set do not do that.
+    if clipboard.unwrap_or(false) {
+        utils::set_into_clipboard(presigned_url);
+    }
 
     Ok(())
 }

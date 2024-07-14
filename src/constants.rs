@@ -9,4 +9,5 @@ pub static CONFIG_FILE: &str = r#"bucket_name = "foo"
 bucket_prefix = "bar"
 presigned_time = 86400
 aws_profile = "default"
+use_clipboard = false
 "#;

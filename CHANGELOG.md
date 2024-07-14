@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TODO: Have the ability to configure the chunk size for multi-part uploads
 - TODO: User configurable tags
 
+## [0.4.2] - 2024-07-14
+### Added
+- Ability to directly save the presigned URL to the system clipboard
+
 ## [0.4.1] - 2024-06-10
 ### Changed
 - Improved the way we read and write the AWS Profile
