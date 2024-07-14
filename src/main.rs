@@ -15,7 +15,7 @@ use utils::print_warning;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // configure tracing
-    utils::configure_tracing(Level::WARN);
+    utils::configure_tracing(Level::ERROR);
     // parse arguments
     let arguments = utils::Args::parse();
 
@@ -75,6 +75,7 @@ async fn main() -> Result<(), anyhow::Error> {
             .to_string()
             .as_str(),
         shuk_config.presigned_time,
+        shuk_config.use_clipboard,
     )
     .await?;
 

@@ -24,6 +24,9 @@ use crate::constants;
 use colored::*;
 use dirs::home_dir;
 
+use clipboard::ClipboardProvider;
+use clipboard::ClipboardContext;
+
 //======================================== TRACING
 pub fn configure_tracing(level: Level) {
     let subscriber = FmtSubscriber::builder()
@@ -94,6 +97,7 @@ pub struct Config {
     pub bucket_prefix: Option<String>,
     pub presigned_time: u64,
     pub aws_profile: Option<String>,
+    pub use_clipboard: Option<bool>,
 }
 
 // This function exists so we can append "/" to any prefix we read from the configuration file.
@@ -206,6 +210,12 @@ pub async fn initialize_config() -> Result<(), anyhow::Error> {
 
 pub fn print_warning(s: &str) {
     println!("{}", s.yellow());
+}
+
+// Store the prisigned url into clipboard
+pub fn set_into_clipboard(s: String) {
+    let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
+    ctx.set_contents(s.to_owned()).unwrap();
 }
 
 //======================================== ARGUMENT PARSING
