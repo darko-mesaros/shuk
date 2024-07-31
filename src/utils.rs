@@ -215,10 +215,11 @@ pub fn print_warning(s: &str) {
 }
 
 // Store the prisigned url into clipboard
-pub fn set_into_clipboard(s: String) {
+pub fn set_into_clipboard(s: String) -> Result<(), Box<dyn std::error::Error>> {
     // NOTE: Uses the rust-clipboard-ext crate. Forks the process and sets the x11 clipboard
-    let mut ctx: ClipboardContext = ClipboardContext::new().unwrap();
+    let mut ctx: ClipboardContext = ClipboardContext::new()?;
     ctx.set_contents(s.to_owned()).unwrap();
+    Ok(())
 }
 
 //======================================== ARGUMENT PARSING

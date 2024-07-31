@@ -23,7 +23,7 @@ use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 
 use tracing::{debug, info};
 
-use crate::{constants, utils};
+use crate::constants;
 use crate::file_management;
 
 // NOTE: Anything smaller than 5MB causes the uploads to be slow(er)
@@ -149,11 +149,20 @@ pub async fn upload_object(
     prefix: Option<String>,
     key: &str,
     presigned_time: u64,
-    clipboard: Option<bool>,
-) -> Result<(), anyhow::Error> {
+) -> Result<String, anyhow::Error> {
     // Getting file info so we can determine if we will do multi-part or not
-    let mut file = File::open(file_name).expect("Failed to open file");
-    let metadata = file.metadata().expect("Failed to get file metadata");
+    let mut file = match File::open(file_name) {
+        Ok(file) => file,
+        Err(e) => {
+            return Err(anyhow::anyhow!("Failed to open file: {}",e));
+        }
+    };
+    let metadata = match file.metadata() {
+        Ok(metadata) => metadata,
+        Err(e) => {
+            return Err(anyhow::anyhow!("Failed to get file metadata: {}",e));
+        }
+    };
     let file_size = metadata.len();
 
     let pref_key = format!("{}{}", prefix.clone().unwrap_or("".into()), key);
@@ -183,10 +192,10 @@ pub async fn upload_object(
             .key(&pref_key)
             .tagging(constants::DEFAULT_OBJECT_TAG)
             .send()
-            .await
-            .unwrap();
+            .await?;
 
-        let upload_id = multipart_upload_res.upload_id().unwrap();
+         let upload_id = multipart_upload_res.upload_id()
+             .ok_or_else(|| anyhow::anyhow!("Failed to get upload ID"))?;
 
         let mut completed_parts = Vec::new();
         let mut part_number = 1;
@@ -198,8 +207,9 @@ pub async fn upload_object(
             let part_size = std::cmp::min(bytes_remaining, PART_SIZE);
 
             let mut part_data = vec![0; part_size as usize];
-            file.read_exact(&mut part_data)
-                .expect("Failed to read file");
+            if let Err(e) = file.read_exact(&mut part_data) {
+                return Err(anyhow::anyhow!("Failed to read file: {}", e));
+            }
 
             let stream = ByteStream::read_from()
                 .path(file_name)
@@ -254,11 +264,15 @@ pub async fn upload_object(
         );
         println!("========================================");
 
-        let body = ByteStream::read_from()
+        let body = match ByteStream::read_from()
             .path(Path::new(file_name))
             .buffer_size(2048)
             .build()
-            .await?;
+            .await
+            {
+                Ok(stream) => stream,
+                Err(e) => return Err(anyhow::anyhow!("Failed to create ByteStream: {}",e)),
+            };
 
         let request = client
             .put_object()
@@ -288,9 +302,9 @@ pub async fn upload_object(
 
     // if the clipboard is set to true, save to the system clipboard.
     // if not or not even set do not do that.
-    if clipboard.unwrap_or(false) {
-        utils::set_into_clipboard(presigned_url);
-    }
+    // if clipboard.unwrap_or(false) {
+    //     utils::set_into_clipboard(presigned_url);
+    // }
 
-    Ok(())
+    Ok(presigned_url)
 }
