@@ -55,7 +55,14 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // parse configuration
-    let shuk_config = utils::Config::load_config()?;
+    // let shuk_config = utils::Config::load_config()?;
+    let shuk_config = match utils::Config::load_config() {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("Failed to load configuration. Make sure that your config file is located at ~/.config/shuk: {}", e);
+            std::process::exit(1);
+        }
+    };
     // configure aws
     let config = utils::configure_aws("us-west-2", shuk_config.aws_profile).await;
     // setup the bedrock-runtime client
@@ -65,7 +72,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let file_name = arguments.filename;
 
     // upload the object
-    upload_object(
+    match upload_object(
         &s3_client,
         &shuk_config.bucket_name,
         &file_name.expect("Filename not provided"),
@@ -75,9 +82,22 @@ async fn main() -> Result<(), anyhow::Error> {
             .to_string()
             .as_str(),
         shuk_config.presigned_time,
-        shuk_config.use_clipboard,
     )
-    .await?;
+    .await
+    {
+        Ok(presigned_url) => {
+            if shuk_config.use_clipboard.unwrap_or(false) {
+                if let Err(e) = utils::set_into_clipboard(presigned_url) {
+                    eprintln!("Error setting clipboard: {}",e);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Error uploading file: {}", e);
+            std::process::exit(1);
+        }
+
+    }
 
     Ok(())
 }
