@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TODO: Have the ability to configure the chunk size for multi-part uploads
 - TODO: User configurable tags
 
+## [0.4.3] - 2024-07-30
+### Changed
+- Fixed the ability to automatically save to an x11 clipboard
+
 ## [0.4.2] - 2024-07-14
 ### Added
 - Ability to directly save the presigned URL to the system clipboard

@@ -1,7 +1,7 @@
 [package]
 name = "shuk"
 description = "A command line tool that uploads files to Amazon S3 buckets, and generates presigned URLs for easy sharing."
-version = "0.4.2"
+version = "0.4.3"
 edition = "2021"
 authors = ["Darko Mesaros <d@rko.rs>"]
 license = "MIT OR Apache-2.0"
@@ -27,6 +27,7 @@ aws-types = "1.1.7"
 bytes = "1.5.0"
 clap = { version = "4.5.2", features = ["derive"] }
 clipboard = "0.5.0"
+clipboard-ext = "0.2.0"
 colored = "2.1.0"
 dirs = "5.0.1"
 http = "0.2.12"
