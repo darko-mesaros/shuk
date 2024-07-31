@@ -24,8 +24,10 @@ use crate::constants;
 use colored::*;
 use dirs::home_dir;
 
-use clipboard::ClipboardProvider;
-use clipboard::ClipboardContext;
+use clipboard_ext::prelude::*;
+use clipboard_ext::x11_fork::ClipboardContext;
+
+
 
 //======================================== TRACING
 pub fn configure_tracing(level: Level) {
@@ -214,7 +216,8 @@ pub fn print_warning(s: &str) {
 
 // Store the prisigned url into clipboard
 pub fn set_into_clipboard(s: String) {
-    let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
+    // NOTE: Uses the rust-clipboard-ext crate. Forks the process and sets the x11 clipboard
+    let mut ctx: ClipboardContext = ClipboardContext::new().unwrap();
     ctx.set_contents(s.to_owned()).unwrap();
 }
 
@@ -227,6 +230,5 @@ pub struct Args {
     // the init flag. So we can copy the config files locally
     #[arg(long, conflicts_with("filename"))]
     pub init: bool,
-    //pub filename: Option<PathBuf>,
 }
 //=========================ALPHA=============== END ARGUMENT PARSING
