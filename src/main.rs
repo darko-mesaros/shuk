@@ -71,8 +71,52 @@ async fn main() -> Result<(), anyhow::Error> {
     let key = arguments.filename.clone();
     let file_name = arguments.filename;
 
-    let md5_of_file = file_management::calculate_file_md5(&file_name.clone().unwrap());
-    println!("DEBUG: {}", md5_of_file.unwrap());
+    // FIX: This can be cleaner
+    let key_full = if shuk_config.bucket_prefix.is_some() {
+        format!("{}/{:?}",
+            &shuk_config.bucket_prefix
+                .clone()
+                .unwrap_or_else(||"".into()),
+            &file_name.clone().unwrap())
+    } else {
+        format!("{:?}",&file_name.clone().unwrap())
+    };
+
+    // Calculate partial MD5 of the local file
+    let md5_of_file = file_management::calculate_partial_hash(&file_name.clone().unwrap())?;
+    // Prep the tags
+    let file_tags = file_management::ObjectTags{
+        managed_by: "shuk".into(),
+        start_hash: md5_of_file.start_hash,
+        end_hash: md5_of_file.end_hash,
+    };
+
+    match file_management::file_exists_in_s3(
+        &s3_client,
+        &shuk_config.bucket_name,
+        key_full.as_str()
+        ).await {
+        // Call was a success
+        Ok(o) => if o {
+            // File exists
+            // Get file metadata
+            let object_metadata = file_management::get_file_metadata(&s3_client, &shuk_config.bucket_name, key_full.as_str()).await?;
+            let object_tags = file_management::get_file_tags(&s3_client, &shuk_config.bucket_name, key_full.as_str()).await?;
+            // Compare the file size
+            // If Same
+            //   Compare partial hash
+            //   If the same - presign
+            //   else, upload
+            // else, upload
+             
+        } else {
+            // File does not exist
+            // Just upload the file
+
+        },
+        // The SDK call failed 
+        Err(e) => eprintln!("Error: Could not determine if a the file exists - {}", e)
+    }
 
     // upload the object
     match upload_object(
@@ -85,6 +129,7 @@ async fn main() -> Result<(), anyhow::Error> {
             .to_string()
             .as_str(),
         shuk_config.presigned_time,
+        file_tags,
     )
     .await
     {

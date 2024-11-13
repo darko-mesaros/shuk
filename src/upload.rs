@@ -149,6 +149,7 @@ pub async fn upload_object(
     prefix: Option<String>,
     key: &str,
     presigned_time: u64,
+    tags: file_management::ObjectTags,
 ) -> Result<String, anyhow::Error> {
     // Getting file info so we can determine if we will do multi-part or not
     let mut file = match File::open(file_name) {
@@ -278,7 +279,9 @@ pub async fn upload_object(
             .put_object()
             .bucket(bucket_name)
             .key(&pref_key)
-            .tagging(constants::DEFAULT_OBJECT_TAG)
+            //.tagging(constants::DEFAULT_OBJECT_TAG)
+            //.tagging(&tags)
+            .set_tagging(Some(tags.to_string()))
             .body(body);
 
         // for the progress bar
