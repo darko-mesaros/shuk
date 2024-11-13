@@ -1,6 +1,8 @@
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::Client;
-use std::time::Duration;
+use std::{path::Path, time::Duration};
+use std::fs::File;
+use std::io::Read;
 
 pub async fn presign_file(
     client: &Client,
@@ -18,4 +20,17 @@ pub async fn presign_file(
         .await?;
 
     Ok(presigned_request.uri().to_string())
+}
+
+pub fn calculate_file_md5<P: AsRef<Path>>(path: P) -> Result<String, anyhow::Error> {
+    // Open and read the entire file
+    let mut file = File::open(path)?;
+    let mut contents = Vec::new();
+    file.read_to_end(&mut contents)?;
+    
+    // Calculate MD5
+    let digest = md5::compute(&contents);
+    
+    // Convert to hex string
+    Ok(format!("{:x}", digest))
 }

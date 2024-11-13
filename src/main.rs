@@ -71,6 +71,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let key = arguments.filename.clone();
     let file_name = arguments.filename;
 
+    let md5_of_file = file_management::calculate_file_md5(&file_name.clone().unwrap());
+    println!("DEBUG: {}", md5_of_file.unwrap());
+
     // upload the object
     match upload_object(
         &s3_client,

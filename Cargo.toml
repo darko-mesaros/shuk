@@ -33,6 +33,7 @@ dirs = "5.0.1"
 http = "0.2.12"
 http-body = "0.4.6"
 indicatif = "0.17.8"
+md5 = "0.7.0"
 pin-project = "1.1.5"
 serde = { version = "1.0.197", features = ["derive"] }
 serde_derive = "1.0.197"
