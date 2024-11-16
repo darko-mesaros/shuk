@@ -4,7 +4,7 @@
 
 ⚠️**BETA SOFTWARE**⚠️
 
-*Shuk* is used to upload files *of any size* to [Amazon S3](https://aws.amazon.com/s3/) and have them shared with others via a [presigned URL](https://docs.aws.amazon.com/AmazonS3/latest/userguide/ShareObjectPreSignedURL.html).
+*Shuk* is used to upload files *of any size* to [Amazon S3](https://aws.amazon.com/s3/) and have them shared with others via a [presigned URL](https://docs.aws.amazon.com/AmazonS3/latest/userguide/ShareObjectPreSignedURL.html). If the same file already exists at the same location, it will **only presign it**.
 
 ## Installation 💾
 
@@ -46,6 +46,8 @@ presigned_time = 86400
 aws_profile = "default"
 # Should the presigned URL be stored directly to the clipboard or not
 use_clipboard = false
+# Set the fallback region
+fallback_region = "us-east-1"
 ```
 
 To automatically configure this file just run `shuk --init`

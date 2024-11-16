@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Cleaned up some code
+- Updated the AWS Crates to latest
 - Fixed region selection during the SDK configuration
 
 ## [0.4.4] - 2024-07-31
