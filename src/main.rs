@@ -6,22 +6,28 @@ pub mod utils;
 use clap::Parser;
 use std::io;
 use std::io::Write;
-use tracing::Level;
 use upload::upload_object;
 use utils::check_for_config;
 use utils::initialize_config;
 use utils::print_warning;
 
+use env_logger::Env;
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    // Configure Logging
+    env_logger::Builder::from_env(Env::default().filter_or("SHUK_LOG", "warn")).init();
     // configure tracing
-    utils::configure_tracing(Level::ERROR);
     // parse arguments
+    log::trace!("Parsing arguments");
     let arguments = utils::Args::parse();
+    log::trace!("Arguments parsed: {:?} ", &arguments);
 
     // Checking for the `--init` flag and then initializing the configuration
     if arguments.init {
+        log::trace!("The --init parameter has been passed");
         if check_for_config() {
+            log::trace!("The configuration already exists");
             print_warning("****************************************");
             print_warning("WARNING:");
             println!("You are trying to initialize the Shuk configuration");
@@ -46,6 +52,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 }
             }
         } else {
+            log::trace!("The configuration does not exist");
             println!("----------------------------------------");
             println!("📜 | Initializing Shuk configuration.");
             initialize_config().await?;
@@ -109,6 +116,7 @@ async fn main() -> Result<(), anyhow::Error> {
         start_hash: md5_of_file.start_hash,
         end_hash: md5_of_file.end_hash,
     };
+    log::trace!("File tags defined: {:#?}", &file_tags);
 
     let just_upload = match file_management::file_exists_in_s3(
         &s3_client,
@@ -119,6 +127,7 @@ async fn main() -> Result<(), anyhow::Error> {
     {
         // Call was a success
         Ok(o) => {
+            log::trace!("The call to check if the file exists has been a success");
             if o {
                 // It exists - lets see if it is the same
                 if file_management::quick_compare(

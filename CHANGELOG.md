@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.5] - 2024-07-31
 ### Added
 - Shuk now checks if a file is already uploaded, and if it is it just presigns it again.
+- Proper tracing and logging using the log crate
 
 ### Changed
 - Cleaned up some code

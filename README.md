@@ -55,3 +55,7 @@ To automatically configure this file just run `shuk --init`
 ## Build Notes
 
 - For the `use_clipboard` feature to compile on X11, you need the `xorg-dev` library.
+
+## Troubleshooting
+
+This project uses the [log](https://crates.io/crates/log) crate. To get different levels of logging set the `SHUK_LOG` environment variable to either `trace`, `warn`, `info`, `debug`, or `error`. By default it is using the `warn` level.

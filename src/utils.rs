@@ -12,8 +12,6 @@ use std::io;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::exit;
-use tracing::Level;
-use tracing_subscriber::FmtSubscriber;
 
 use clap::Parser;
 
@@ -29,16 +27,16 @@ use clipboard_ext::prelude::*;
 use clipboard_ext::x11_fork::ClipboardContext;
 
 //======================================== TRACING
-pub fn configure_tracing(level: Level) {
-    let subscriber = FmtSubscriber::builder()
-        // all spans/events with a level higher than TRACE (e.g, debug, info, warn, etc.)
-        // will be written to stdout.
-        .with_max_level(level)
-        // completes the builder.
-        .finish();
-
-    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
-}
+// pub fn configure_tracing(level: Level) {
+//     let subscriber = FmtSubscriber::builder()
+//         // all spans/events with a level higher than TRACE (e.g, debug, info, warn, etc.)
+//         // will be written to stdout.
+//         .with_max_level(level)
+//         // completes the builder.
+//         .finish();
+//
+//     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+// }
 //======================================== END TRACING
 //======================================== AWS
 pub async fn configure_aws(
@@ -115,9 +113,13 @@ where
 
 impl Config {
     pub fn load_config() -> Result<Self, anyhow::Error> {
+        log::trace!("Parsing the configuration file");
         let home_dir = home_dir().expect("Failed to get HOME directory");
+        log::trace!("Home directory: {:?}", &home_dir);
         let config_dir = home_dir.join(".config/shuk");
+        log::trace!("Config directory: {:?}", &config_dir);
         let config_file_path = config_dir.join(constants::CONFIG_FILE_NAME);
+        log::trace!("Config file path: {:?}", &config_file_path);
 
         if check_for_config() {
             let _contents: String = match fs::read_to_string(config_file_path) {
@@ -141,14 +143,22 @@ impl Config {
 //======================================== END CONFIG PARSING
 //
 pub fn check_for_config() -> bool {
+    log::trace!("Checking for the configuration file");
     let home_dir = home_dir().expect("Failed to get HOME directory");
+    log::trace!("Home directory: {:?}", &home_dir);
     let config_dir = home_dir.join(".config/shuk");
-    let config_file_path = config_dir.join("shuk.toml");
+    log::trace!("Config directory: {:?}", &config_dir);
+    let config_file_path = config_dir.join(constants::CONFIG_FILE_NAME);
+    log::trace!("Config file path: {:?}", &config_file_path);
 
     // returns true or false
     match config_file_path.try_exists() {
-        Ok(b) => b,
+        Ok(b) => {
+            log::trace!("Config file path: {:?} exists", &config_file_path);
+            b
+        },
         Err(e) => {
+            log::warn!("I was unable to determine if the config file path: {:?} exists", &config_file_path);
             eprintln!("Was unable to determine if the config file exists: {}", e);
             exit(1);
         }
@@ -157,13 +167,20 @@ pub fn check_for_config() -> bool {
 
 // function that creates the configuration files during the `init` command
 pub async fn initialize_config() -> Result<(), anyhow::Error> {
+    log::trace!("Initializing the configuration");
     let home_dir = home_dir().expect("Failed to get HOME directory");
+    log::trace!("Home directory: {:?}", &home_dir);
     let config_dir = home_dir.join(format!(".config/{}", constants::CONFIG_DIR_NAME));
+    log::trace!("Config directory: {:?}", &config_dir);
+    log::trace!("Creating the config directory: {:?}", &config_dir);
     fs::create_dir_all(&config_dir)?;
 
     let config_file_path = config_dir.join(constants::CONFIG_FILE_NAME);
+    log::trace!("Config file path: {:?}", &config_file_path);
     let config_content = constants::CONFIG_FILE.to_string();
+    log::trace!("Config file contents: {:?}", &config_content);
 
+    log::trace!("Parsing default config into TOML");
     let mut default_config: Config =
         toml::from_str::<Config>(&config_content).expect("default config must be valid");
 
@@ -173,12 +190,14 @@ pub async fn initialize_config() -> Result<(), anyhow::Error> {
     io::stdout().flush()?; // so the answers are typed on the same line as above
     io::stdin().read_line(&mut bucket_name)?;
     default_config.bucket_name = bucket_name.trim().to_string();
+    log::trace!("Using bucket name: {}", &default_config.bucket_name);
 
     let mut bucket_prefix = String::new();
     print!("Enter the prefix (folder) in that bucket where the files will be uploaded (leave blank for the root of the bucket): ");
     io::stdout().flush()?; // so the answers are typed on the same line as above
     io::stdin().read_line(&mut bucket_prefix)?;
     default_config.bucket_prefix = Some(bucket_prefix.trim().to_string());
+    log::trace!("Using bucket prefix: {:?}", &default_config.bucket_prefix);
 
     let mut config_profile = String::new();
     print!("Enter the AWS profile name (enter for None): ");
@@ -190,6 +209,7 @@ pub async fn initialize_config() -> Result<(), anyhow::Error> {
     } else {
         Some(config_profile.to_string())
     };
+    log::trace!("Using profile : {:?}", &default_config.aws_profile);
 
     fs::write(&config_file_path, toml::to_string_pretty(&default_config)?)?;
     println!(
@@ -209,13 +229,14 @@ pub fn print_warning(s: &str) {
 // Store the prisigned url into clipboard
 pub fn set_into_clipboard(s: String) -> Result<(), Box<dyn std::error::Error>> {
     // NOTE: Uses the rust-clipboard-ext crate. Forks the process and sets the x11 clipboard
+    log::trace!("Setting into clipboard: {:?}", &s);
     let mut ctx: ClipboardContext = ClipboardContext::new()?;
     ctx.set_contents(s.to_owned()).unwrap();
     Ok(())
 }
 
 //======================================== ARGUMENT PARSING
-#[derive(Parser, Default)]
+#[derive(Debug, Parser, Default)]
 #[command(version, about, long_about = None)]
 pub struct Args {
     #[arg(required_unless_present("init"))]
