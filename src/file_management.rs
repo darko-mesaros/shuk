@@ -1,11 +1,11 @@
-use aws_sdk_s3::presigning::PresigningConfig;
-use aws_sdk_s3::Client;
 use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::operation::head_object::HeadObjectError;
-use std::{path::Path, time::Duration};
-use std::fs::File;
-use std::io::{Read,Seek, SeekFrom};
+use aws_sdk_s3::presigning::PresigningConfig;
+use aws_sdk_s3::Client;
 use md5;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
+use std::{path::Path, time::Duration};
 
 use crate::utils;
 
@@ -19,14 +19,18 @@ pub struct ObjectTags {
 // NOTE: Maybe I can create a dedicated function for this?
 impl std::fmt::Display for ObjectTags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "managed_by={}&start_hash={}&end_hash={}", self.managed_by, self.start_hash, self.end_hash)
+        write!(
+            f,
+            "managed_by={}&start_hash={}&end_hash={}",
+            self.managed_by, self.start_hash, self.end_hash
+        )
     }
 }
 
 // Needed for the tagging
 impl From<&ObjectTags> for String {
     fn from(tags: &ObjectTags) -> String {
-        tags.to_string()  // This uses your Display implementation
+        tags.to_string() // This uses your Display implementation
     }
 }
 
@@ -48,23 +52,15 @@ pub async fn presign_file(
     Ok(presigned_request.uri().to_string())
 }
 
-// NOTE: Comparing file sameness
-// Small files < 100MB - MD5 Hash
-// Medium Files > 100MB - File Size, Testing Start and End, Local Caching?
-// Flow:
-// FileName
-// File Size
-// MD5 Hash
-
 pub fn calculate_file_md5<P: AsRef<Path>>(path: P) -> Result<String, anyhow::Error> {
     // Open and read the entire file
     let mut file = File::open(path)?;
     let mut contents = Vec::new();
     file.read_to_end(&mut contents)?;
-    
+
     // Calculate MD5
     let digest = md5::compute(&contents);
-    
+
     // Convert to hex string
     Ok(format!("{:x}", digest))
 }
@@ -89,7 +85,7 @@ pub fn calculate_partial_hash(local_path: &Path) -> Result<PartialFileHash, anyh
     let start_hash = format!("{:x}", md5::compute(&start_buffer));
 
     // This is just a check if the file is too small (less than 8KB as is the sample size by
-    // default). 
+    // default).
     // This should not happen, but is here just in case.
     let end_hash = if file_size > SAMPLE_SIZE as u64 {
         // Move to the end of file - SAMPLE_SIZE
@@ -104,13 +100,11 @@ pub fn calculate_partial_hash(local_path: &Path) -> Result<PartialFileHash, anyh
         start_hash.clone()
     };
 
-    Ok(
-        PartialFileHash {
-            start_hash,
-            end_hash,
-            file_size,
-        }
-    )
+    Ok(PartialFileHash {
+        start_hash,
+        end_hash,
+        file_size,
+    })
 }
 
 pub async fn file_exists_in_s3(
@@ -118,21 +112,13 @@ pub async fn file_exists_in_s3(
     bucket: &str,
     key: &str,
 ) -> Result<bool, anyhow::Error> {
-    match client
-        .head_object()
-        .bucket(bucket)
-        .key(key)
-        .send()
-        .await
-    {
+    match client.head_object().bucket(bucket).key(key).send().await {
         Ok(_) => Ok(true),
         Err(err) => match err {
             SdkError::ServiceError(err) => {
                 match err.err() {
                     // If the error NotFound is returned - return false
-                    HeadObjectError::NotFound(_) => {
-                        Ok(false)
-                    },
+                    HeadObjectError::NotFound(_) => Ok(false),
                     other_err => Err(anyhow::anyhow!("S3 service error: {:?}", other_err)),
                 }
             }
@@ -142,37 +128,30 @@ pub async fn file_exists_in_s3(
 }
 
 // If you need metadata version:
-pub async fn get_file_metadata(
+async fn get_file_metadata(
     client: &Client,
     bucket: &str,
     key: &str,
 ) -> Result<Option<aws_sdk_s3::operation::head_object::HeadObjectOutput>, anyhow::Error> {
-    match client
-        .head_object()
-        .bucket(bucket)
-        .key(key)
-        .send()
-        .await
-    {
+    match client.head_object().bucket(bucket).key(key).send().await {
         Ok(output) => Ok(Some(output)),
         Err(err) => match err {
-            SdkError::ServiceError(err) => {
-                match err.err() {
-                    HeadObjectError::NotFound(_) => Ok(None),
-                    other_err => Err(anyhow::anyhow!("S3 service error: {:?}", other_err)),
-                }
-            }
+            SdkError::ServiceError(err) => match err.err() {
+                HeadObjectError::NotFound(_) => Ok(None),
+                other_err => Err(anyhow::anyhow!("S3 service error: {:?}", other_err)),
+            },
             other_err => Err(anyhow::anyhow!("S3 SDK error: {:?}", other_err)),
         },
     }
 }
 
 // If you need metadata version:
-pub async fn get_file_tags(
+async fn get_file_tags(
     client: &Client,
     bucket: &str,
     key: &str,
-) -> Result<Option<aws_sdk_s3::operation::get_object_tagging::GetObjectTaggingOutput>, anyhow::Error> {
+) -> Result<Option<aws_sdk_s3::operation::get_object_tagging::GetObjectTaggingOutput>, anyhow::Error>
+{
     match client
         .get_object_tagging()
         .bucket(bucket)
@@ -185,45 +164,55 @@ pub async fn get_file_tags(
     }
 }
 
-pub async fn quick_compare(local_path: &Path, bucket_name: &str, key: &str, local_object_tags: &ObjectTags, c: &Client ) -> Result<bool, anyhow::Error> {
+pub async fn quick_compare(
+    local_path: &Path,
+    bucket_name: &str,
+    key: &str,
+    local_object_tags: &ObjectTags,
+    c: &Client,
+) -> Result<bool, anyhow::Error> {
     // Get file metadata
     let file = File::open(local_path)?;
     let file_size = file.metadata()?.len();
-    let object_metadata = get_file_metadata(c, bucket_name , key).await?;
+    let object_metadata = get_file_metadata(c, bucket_name, key).await?;
     let object_tags = get_file_tags(c, bucket_name, key).await?;
 
     // NOTE: Very complex way of making sure the length of my remote file is extracted
     // if I cannot do it, I just return 0 and we reupload
-    let s3_object_len =  match object_metadata {
+    let s3_object_len = match object_metadata {
         None => {
             println!("I was unable to determine the file size of the remote object, something went wrong, we are uploading it again");
             0
-        },
+        }
         Some(metadata) => match metadata.content_length() {
             None => {
                 println!("I was unable to determine the file size of the remote object, something went wrong, we are uploading it again");
                 0
-            },
+            }
             Some(len) => match len.try_into() {
                 Ok(size) => size,
                 Err(_) => {
                     println!("I was unable to determine the file size of the remote object, something went wrong, we are uploading it again");
                     0
                 }
-            }
-        }
+            },
+        },
     };
 
     // Extracting the hash tags
     // FIX: Clean it up
     let tags = object_tags.unwrap();
-    let remote_start_hash = tags.tag_set().iter()
-        .find(|tag|tag.key() == "start_hash")
+    let remote_start_hash = tags
+        .tag_set()
+        .iter()
+        .find(|tag| tag.key() == "start_hash")
         .map(|tag| tag.value())
         .unwrap_or_default();
 
-    let remote_end_hash = tags.tag_set().iter()
-        .find(|tag|tag.key() == "end_hash")
+    let remote_end_hash = tags
+        .tag_set()
+        .iter()
+        .find(|tag| tag.key() == "end_hash")
         .map(|tag| tag.value())
         .unwrap_or_default();
 
@@ -231,7 +220,9 @@ pub async fn quick_compare(local_path: &Path, bucket_name: &str, key: &str, loca
     if file_size == s3_object_len {
         // If Same
         //   Compare partial hash
-        if local_object_tags.start_hash == remote_start_hash && local_object_tags.end_hash == remote_end_hash {
+        if local_object_tags.start_hash == remote_start_hash
+            && local_object_tags.end_hash == remote_end_hash
+        {
             //   If the same - presign
             Ok(true)
         } else {

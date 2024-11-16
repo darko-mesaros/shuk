@@ -55,7 +55,6 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // parse configuration
-    // let shuk_config = utils::Config::load_config()?;
     let shuk_config = match utils::Config::load_config() {
         Ok(config) => config,
         Err(e) => {
@@ -64,36 +63,48 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     };
     // configure aws
-    let config = utils::configure_aws("us-west-2", shuk_config.aws_profile).await;
+    let config = utils::configure_aws(
+        shuk_config
+            .fallback_region
+            .as_deref()
+            .unwrap_or("us-east-1")
+            .to_string(),
+        shuk_config.aws_profile.as_ref(),
+    )
+    .await;
     // setup the bedrock-runtime client
     let s3_client = aws_sdk_s3::Client::new(&config);
 
     let key = arguments.filename.clone();
-    let file_name = arguments.filename.expect("Unable to determine the file name from the command line parameters");
+    let file_name = arguments
+        .filename
+        .expect("Unable to determine the file name from the command line parameters");
+    // NOTE: Getting just the key (file name)
+    let key_file_name = key
+        .as_ref()
+        .and_then(|path| path.file_name())
+        .and_then(|name| name.to_str())
+        .map(|s| s.trim_matches('"'))
+        .ok_or_else(|| anyhow::anyhow!("Invalid filename provided"))?;
 
     // FIX: This can be cleaner
     let key_full = if shuk_config.bucket_prefix.is_some() {
-        format!("{}{}",
-            &shuk_config.bucket_prefix
+        format!(
+            "{}{}",
+            &shuk_config
+                .bucket_prefix
                 .clone()
-                .unwrap_or_else(||"".into()),
-            &file_name // FIX: Clean this crap up
-                .clone()
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .trim_matches('"')
-                .to_string()
-                )
+                .unwrap_or_else(|| "".into()),
+            &key_file_name
+        )
     } else {
-        format!("{:?}",&file_name.clone())
+        key_file_name.to_string()
     };
 
     // Calculate partial MD5 of the local file
     let md5_of_file = file_management::calculate_partial_hash(&file_name.clone())?;
     // Prep the tags
-    let file_tags = file_management::ObjectTags{
+    let file_tags = file_management::ObjectTags {
         managed_by: "shuk".into(),
         start_hash: md5_of_file.start_hash,
         end_hash: md5_of_file.end_hash,
@@ -102,57 +113,56 @@ async fn main() -> Result<(), anyhow::Error> {
     let just_upload = match file_management::file_exists_in_s3(
         &s3_client,
         &shuk_config.bucket_name,
-        key_full.as_str()
-        ).await {
+        key_full.as_str(),
+    )
+    .await
+    {
         // Call was a success
-        Ok(o) => if o {
-            // It exists - lets see if it is the same
-            if file_management::quick_compare(&file_name, &shuk_config.bucket_name, key_full.as_str(), &file_tags, &s3_client).await? {
-                // They are the same - just presing
-                true
+        Ok(o) => {
+            if o {
+                // It exists - lets see if it is the same
+                if file_management::quick_compare(
+                    &file_name,
+                    &shuk_config.bucket_name,
+                    key_full.as_str(),
+                    &file_tags,
+                    &s3_client,
+                )
+                .await?
+                {
+                    // They are the same - just presing
+                    true
+                } else {
+                    // They are not the same, upload
+                    false
+                }
             } else {
-                // They are not the same, upload
+                // File does not exist
+                // Just upload the file
                 false
             }
-
-        } else {
-            // File does not exist
-            // Just upload the file
-            false
-        },
-        // The SDK call failed 
+        }
+        // The SDK call failed
         Err(e) => {
             eprintln!("Error: Could not determine if a the file exists - {}", e);
             false
         }
     };
 
-    // NOTE: Getting just the key (file name)
-    // FIX: This needs to be cleaned up
-    let bare_key = key.expect("Filename not provideed");
-    let key_file_name = bare_key
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .trim_matches('"');
-
     match upload_object(
         &s3_client,
-        &shuk_config.bucket_name,
         &file_name,
-        shuk_config.bucket_prefix,
         key_file_name,
-        shuk_config.presigned_time,
         file_tags,
         just_upload,
+        &shuk_config,
     )
     .await
     {
         Ok(presigned_url) => {
             if shuk_config.use_clipboard.unwrap_or(false) {
                 if let Err(e) = utils::set_into_clipboard(presigned_url) {
-                    eprintln!("Error setting clipboard: {}",e);
+                    eprintln!("Error setting clipboard: {}", e);
                 }
             }
         }
@@ -160,7 +170,6 @@ async fn main() -> Result<(), anyhow::Error> {
             eprintln!("Error uploading file: {}", e);
             std::process::exit(1);
         }
-
     }
 
     Ok(())

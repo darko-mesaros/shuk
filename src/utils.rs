@@ -1,11 +1,12 @@
 use aws_config::environment::credentials::EnvironmentVariableCredentialsProvider;
+use aws_config::imds::credentials::ImdsCredentialsProvider;
 use aws_config::meta::credentials::CredentialsProviderChain;
 use aws_config::meta::region::RegionProviderChain;
 use aws_config::profile::ProfileFileCredentialsProvider;
+use aws_config::profile::ProfileFileRegionProvider;
 use aws_config::BehaviorVersion;
 use aws_types::region::Region;
 
-use std::env;
 use std::fs;
 use std::io;
 use std::io::Write;
@@ -27,8 +28,6 @@ use dirs::home_dir;
 use clipboard_ext::prelude::*;
 use clipboard_ext::x11_fork::ClipboardContext;
 
-
-
 //======================================== TRACING
 pub fn configure_tracing(level: Level) {
     let subscriber = FmtSubscriber::builder()
@@ -42,42 +41,34 @@ pub fn configure_tracing(level: Level) {
 }
 //======================================== END TRACING
 //======================================== AWS
-pub async fn configure_aws(fallback_region: &str, profile_name: Option<String>) -> aws_config::SdkConfig {
-    // FIX: 
-    // This does not really work on different regions other than us-west-2 (or the region provided
-    // in the main.rs)
-    let region_provider =
-        // NOTE: this is different than the default Rust SDK behavior which checks AWS_REGION first. Is this intentional?
-        RegionProviderChain::first_try(env::var("AWS_DEFAULT_REGION").ok().map(Region::new))
-            .or_default_provider()
-            .or_else(Region::new(fallback_region.to_string()));
+pub async fn configure_aws(
+    fallback_region: String,
+    profile_name: Option<&String>,
+) -> aws_config::SdkConfig {
+    let profile = profile_name.map(|s| s.as_str()).unwrap_or("default");
+    let region_provider = RegionProviderChain::first_try(
+        ProfileFileRegionProvider::builder()
+            .profile_name(profile)
+            .build(),
+    )
+    .or_else(aws_config::environment::EnvironmentVariableRegionProvider::new())
+    .or_else(aws_config::imds::region::ImdsRegionProvider::builder().build())
+    .or_else(Region::new(fallback_region));
 
-
-    // NOTE: This checks, ENV first, then profile, then it falls back to the whatever the default
-    // is
-
-    // Try this first
-    let mut provider = CredentialsProviderChain::first_try(
+    let credentials_provider = CredentialsProviderChain::first_try(
         "Environment",
         EnvironmentVariableCredentialsProvider::new(),
-    );
-
-    // if profile_name is set (if it is not None)
-    if let Some(profile_name) = profile_name {
-        provider = provider
-            .or_else( // if the profile_name is empty it still configures it as such
-                "Profile",
-                ProfileFileCredentialsProvider::builder()
-                    .profile_name(profile_name) // what if the profile_name is empty?
-                    .build(),
-            );
-
-    };
-
-    let provider = provider.or_default_provider().await;
+    )
+    .or_else(
+        "Profile",
+        ProfileFileCredentialsProvider::builder()
+            .profile_name(profile)
+            .build(),
+    )
+    .or_else("IMDS", ImdsCredentialsProvider::builder().build());
 
     aws_config::defaults(BehaviorVersion::latest())
-        .credentials_provider(provider)
+        .credentials_provider(credentials_provider)
         .region(region_provider)
         .load()
         .await
@@ -100,6 +91,7 @@ pub struct Config {
     pub presigned_time: u64,
     pub aws_profile: Option<String>,
     pub use_clipboard: Option<bool>,
+    pub fallback_region: Option<String>,
 }
 
 // This function exists so we can append "/" to any prefix we read from the configuration file.

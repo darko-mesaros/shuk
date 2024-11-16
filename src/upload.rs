@@ -24,6 +24,7 @@ use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use tracing::{debug, info};
 
 use crate::file_management;
+use crate::utils;
 
 // NOTE: Anything smaller than 5MB causes the uploads to be slow(er)
 // The PART_SIZE needs to be at least 5MB
@@ -144,42 +145,50 @@ where
 // FIX: Function has too many arguments
 pub async fn upload_object(
     client: &Client,
-    bucket_name: &str,
     file_name: &PathBuf,
-    prefix: Option<String>,
     key: &str,
-    presigned_time: u64,
     tags: file_management::ObjectTags,
     just_presign: bool,
+    shuk_config: &utils::Config,
 ) -> Result<String, anyhow::Error> {
     // Getting file info so we can determine if we will do multi-part or not
     let mut file = match File::open(file_name) {
         Ok(file) => file,
         Err(e) => {
-            return Err(anyhow::anyhow!("Failed to open file: {}",e));
+            return Err(anyhow::anyhow!("Failed to open file: {}", e));
         }
     };
     let metadata = match file.metadata() {
         Ok(metadata) => metadata,
         Err(e) => {
-            return Err(anyhow::anyhow!("Failed to get file metadata: {}",e));
+            return Err(anyhow::anyhow!("Failed to get file metadata: {}", e));
         }
     };
     let file_size = metadata.len();
 
-    let pref_key = format!("{}{}", prefix.clone().unwrap_or("".into()), key);
+    let pref_key = format!(
+        "{}{}",
+        &shuk_config.bucket_prefix.clone().unwrap_or("".into()),
+        key
+    );
 
+    // We should only presign the file
     let presigned_url: String = if just_presign {
-        let presigned_url =
-            file_management::presign_file(client, bucket_name, key, prefix, presigned_time).await?;
+        let presigned_url = file_management::presign_file(
+            client,
+            &shuk_config.bucket_name,
+            key,
+            shuk_config.bucket_prefix.clone(),
+            shuk_config.presigned_time,
+        )
+        .await?;
         println!("========================================");
         println!("📋 | Your file is already uploaded, re-pre-signing: ");
         println!("📋 | {}", presigned_url);
 
         presigned_url
-
     } else {
-
+        // Actually upload the file
         // We need to do multi-part upload if file is larger than 4GB
         if file_size > 4294967296 {
             println!("========================================");
@@ -187,7 +196,7 @@ pub async fn upload_object(
             println!("💾 | Using multi-part upload");
             println!(
                 "🚀 | Uploading file: {}, to S3 Bucket: {} | 🚀",
-                key, bucket_name
+                key, &shuk_config.bucket_name
             );
             println!("========================================");
 
@@ -201,15 +210,16 @@ pub async fn upload_object(
 
             let multipart_upload_res: CreateMultipartUploadOutput = client
                 .create_multipart_upload()
-                .bucket(bucket_name)
+                .bucket(&shuk_config.bucket_name)
                 .key(&pref_key)
                 //.tagging(constants::DEFAULT_OBJECT_TAG)
                 .set_tagging(Some(tags.to_string()))
                 .send()
                 .await?;
 
-             let upload_id = multipart_upload_res.upload_id()
-                 .ok_or_else(|| anyhow::anyhow!("Failed to get upload ID"))?;
+            let upload_id = multipart_upload_res
+                .upload_id()
+                .ok_or_else(|| anyhow::anyhow!("Failed to get upload ID"))?;
 
             let mut completed_parts = Vec::new();
             let mut part_number = 1;
@@ -237,7 +247,7 @@ pub async fn upload_object(
 
                 let upload_part_res = client
                     .upload_part()
-                    .bucket(bucket_name)
+                    .bucket(&shuk_config.bucket_name)
                     .key(&pref_key)
                     .upload_id(upload_id)
                     .part_number(part_number)
@@ -262,7 +272,7 @@ pub async fn upload_object(
 
             let _complete_multipart_upload_res = client
                 .complete_multipart_upload()
-                .bucket(bucket_name)
+                .bucket(&shuk_config.bucket_name)
                 .key(&pref_key)
                 .multipart_upload(completed_multipart_upload)
                 .upload_id(upload_id)
@@ -274,7 +284,7 @@ pub async fn upload_object(
             println!("========================================");
             println!(
                 "🚀 | Uploading file: {}, to S3 Bucket: {} | 🚀",
-                key, bucket_name
+                key, &shuk_config.bucket_name
             );
             println!("========================================");
 
@@ -283,14 +293,14 @@ pub async fn upload_object(
                 .buffer_size(2048)
                 .build()
                 .await
-                {
-                    Ok(stream) => stream,
-                    Err(e) => return Err(anyhow::anyhow!("Failed to create ByteStream: {}",e)),
-                };
+            {
+                Ok(stream) => stream,
+                Err(e) => return Err(anyhow::anyhow!("Failed to create ByteStream: {}", e)),
+            };
 
             let request = client
                 .put_object()
-                .bucket(bucket_name)
+                .bucket(&shuk_config.bucket_name)
                 .key(&pref_key)
                 //.tagging(constants::DEFAULT_OBJECT_TAG)
                 //.tagging(&tags)
@@ -310,16 +320,20 @@ pub async fn upload_object(
         // wrapped function
         //
         // presign the file and return the URL
-        let presigned_url =
-            file_management::presign_file(client, bucket_name, key, prefix, presigned_time).await?;
+        let presigned_url = file_management::presign_file(
+            client,
+            &shuk_config.bucket_name,
+            key,
+            shuk_config.bucket_prefix.clone(),
+            shuk_config.presigned_time,
+        )
+        .await?;
         println!("========================================");
         println!("📋 | Good job, here is your file: ");
         println!("📋 | {}", presigned_url);
 
         presigned_url
-
     };
-
 
     Ok(presigned_url)
 }
