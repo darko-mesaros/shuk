@@ -11,16 +11,11 @@ use utils::check_for_config;
 use utils::initialize_config;
 use utils::print_warning;
 
-use env_logger::Env;
-
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Configure Logging
-    env_logger::Builder::from_env(Env::default().filter_or("SHUK_LOG", "warn")).init();
-    // configure tracing
-    // parse arguments
-    log::trace!("Parsing arguments");
     let arguments = utils::Args::parse();
+    utils::setup_logging(arguments.verbose);
     log::trace!("Arguments parsed: {:?} ", &arguments);
 
     // Checking for the `--init` flag and then initializing the configuration

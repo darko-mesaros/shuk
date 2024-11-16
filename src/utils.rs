@@ -25,19 +25,26 @@ use dirs::home_dir;
 
 use clipboard_ext::prelude::*;
 use clipboard_ext::x11_fork::ClipboardContext;
+use chrono;
 
-//======================================== TRACING
-// pub fn configure_tracing(level: Level) {
-//     let subscriber = FmtSubscriber::builder()
-//         // all spans/events with a level higher than TRACE (e.g, debug, info, warn, etc.)
-//         // will be written to stdout.
-//         .with_max_level(level)
-//         // completes the builder.
-//         .finish();
-//
-//     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
-// }
-//======================================== END TRACING
+// Configure logging
+pub fn setup_logging(verbose: bool) {
+    let env = env_logger::Env::default().filter_or("SHUK_LOG", if verbose { "debug" } else { "warn" });
+
+    env_logger::Builder::from_env(env)
+        .format(|buf, record| {
+            writeln!(
+                buf,
+                "{} [{}] {}",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                record.level(),
+                record.args()
+            )
+        })
+        .init();
+}
+
+
 //======================================== AWS
 pub async fn configure_aws(
     fallback_region: String,
@@ -244,5 +251,7 @@ pub struct Args {
     // the init flag. So we can copy the config files locally
     #[arg(long, conflicts_with("filename"))]
     pub init: bool,
+    #[arg(short, long, help = "Enable verbose logging")]
+    pub verbose: bool,
 }
 //=========================ALPHA=============== END ARGUMENT PARSING
