@@ -69,21 +69,29 @@ async fn main() -> Result<(), anyhow::Error> {
     let s3_client = aws_sdk_s3::Client::new(&config);
 
     let key = arguments.filename.clone();
-    let file_name = arguments.filename;
+    let file_name = arguments.filename.expect("Unable to determine the file name from the command line parameters");
 
     // FIX: This can be cleaner
     let key_full = if shuk_config.bucket_prefix.is_some() {
-        format!("{}/{:?}",
+        format!("{}{}",
             &shuk_config.bucket_prefix
                 .clone()
                 .unwrap_or_else(||"".into()),
-            &file_name.clone().unwrap())
+            &file_name // FIX: Clean this crap up
+                .clone()
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .trim_matches('"')
+                .to_string()
+                )
     } else {
-        format!("{:?}",&file_name.clone().unwrap())
+        format!("{:?}",&file_name.clone())
     };
 
     // Calculate partial MD5 of the local file
-    let md5_of_file = file_management::calculate_partial_hash(&file_name.clone().unwrap())?;
+    let md5_of_file = file_management::calculate_partial_hash(&file_name.clone())?;
     // Prep the tags
     let file_tags = file_management::ObjectTags{
         managed_by: "shuk".into(),
@@ -91,45 +99,53 @@ async fn main() -> Result<(), anyhow::Error> {
         end_hash: md5_of_file.end_hash,
     };
 
-    match file_management::file_exists_in_s3(
+    let just_upload = match file_management::file_exists_in_s3(
         &s3_client,
         &shuk_config.bucket_name,
         key_full.as_str()
         ).await {
         // Call was a success
         Ok(o) => if o {
-            // File exists
-            // Get file metadata
-            let object_metadata = file_management::get_file_metadata(&s3_client, &shuk_config.bucket_name, key_full.as_str()).await?;
-            let object_tags = file_management::get_file_tags(&s3_client, &shuk_config.bucket_name, key_full.as_str()).await?;
-            // Compare the file size
-            // If Same
-            //   Compare partial hash
-            //   If the same - presign
-            //   else, upload
-            // else, upload
-             
+            // It exists - lets see if it is the same
+            if file_management::quick_compare(&file_name, &shuk_config.bucket_name, key_full.as_str(), &file_tags, &s3_client).await? {
+                // They are the same - just presing
+                true
+            } else {
+                // They are not the same, upload
+                false
+            }
+
         } else {
             // File does not exist
             // Just upload the file
-
+            false
         },
         // The SDK call failed 
-        Err(e) => eprintln!("Error: Could not determine if a the file exists - {}", e)
-    }
+        Err(e) => {
+            eprintln!("Error: Could not determine if a the file exists - {}", e);
+            false
+        }
+    };
 
-    // upload the object
+    // NOTE: Getting just the key (file name)
+    // FIX: This needs to be cleaned up
+    let bare_key = key.expect("Filename not provideed");
+    let key_file_name = bare_key
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .trim_matches('"');
+
     match upload_object(
         &s3_client,
         &shuk_config.bucket_name,
-        &file_name.expect("Filename not provided"),
+        &file_name,
         shuk_config.bucket_prefix,
-        key.expect("Filename not provided")
-            .to_string_lossy()
-            .to_string()
-            .as_str(),
+        key_file_name,
         shuk_config.presigned_time,
         file_tags,
+        just_upload,
     )
     .await
     {

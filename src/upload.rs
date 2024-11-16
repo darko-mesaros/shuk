@@ -23,7 +23,6 @@ use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 
 use tracing::{debug, info};
 
-use crate::constants;
 use crate::file_management;
 
 // NOTE: Anything smaller than 5MB causes the uploads to be slow(er)
@@ -142,6 +141,7 @@ where
     }
 }
 
+// FIX: Function has too many arguments
 pub async fn upload_object(
     client: &Client,
     bucket_name: &str,
@@ -150,6 +150,7 @@ pub async fn upload_object(
     key: &str,
     presigned_time: u64,
     tags: file_management::ObjectTags,
+    just_presign: bool,
 ) -> Result<String, anyhow::Error> {
     // Getting file info so we can determine if we will do multi-part or not
     let mut file = match File::open(file_name) {
@@ -168,146 +169,157 @@ pub async fn upload_object(
 
     let pref_key = format!("{}{}", prefix.clone().unwrap_or("".into()), key);
 
-    // We need to do multi-part upload if file is larger than 4GB
-    if file_size > 4294967296 {
+    let presigned_url: String = if just_presign {
+        let presigned_url =
+            file_management::presign_file(client, bucket_name, key, prefix, presigned_time).await?;
         println!("========================================");
-        println!("💾 | File size is bigger than 4GB");
-        println!("💾 | Using multi-part upload");
-        println!(
-            "🚀 | Uploading file: {}, to S3 Bucket: {} | 🚀",
-            key, bucket_name
-        );
-        println!("========================================");
+        println!("📋 | Your file is already uploaded, re-pre-signing: ");
+        println!("📋 | {}", presigned_url);
 
-        // A new bar is created here as we cannot use the same approach as with non multi-part
-        // uploads
-        let bar = ProgressBar::new(file_size);
-        bar.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
-            .unwrap()
-            .with_key("eta", |state: &ProgressState, w: &mut dyn Write| write!(w,"{:.1}s", state.eta().as_secs_f64()).unwrap())
-            .progress_chars("#>-"));
+        presigned_url
 
-        let multipart_upload_res: CreateMultipartUploadOutput = client
-            .create_multipart_upload()
-            .bucket(bucket_name)
-            .key(&pref_key)
-            .tagging(constants::DEFAULT_OBJECT_TAG)
-            .send()
-            .await?;
+    } else {
 
-         let upload_id = multipart_upload_res.upload_id()
-             .ok_or_else(|| anyhow::anyhow!("Failed to get upload ID"))?;
+        // We need to do multi-part upload if file is larger than 4GB
+        if file_size > 4294967296 {
+            println!("========================================");
+            println!("💾 | File size is bigger than 4GB");
+            println!("💾 | Using multi-part upload");
+            println!(
+                "🚀 | Uploading file: {}, to S3 Bucket: {} | 🚀",
+                key, bucket_name
+            );
+            println!("========================================");
 
-        let mut completed_parts = Vec::new();
-        let mut part_number = 1;
-        let mut file_position: u64 = 0;
+            // A new bar is created here as we cannot use the same approach as with non multi-part
+            // uploads
+            let bar = ProgressBar::new(file_size);
+            bar.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+                .unwrap()
+                .with_key("eta", |state: &ProgressState, w: &mut dyn Write| write!(w,"{:.1}s", state.eta().as_secs_f64()).unwrap())
+                .progress_chars("#>-"));
 
-        // main loop for file chunks
-        while file_position < file_size {
-            let bytes_remaining = file_size - file_position;
-            let part_size = std::cmp::min(bytes_remaining, PART_SIZE);
-
-            let mut part_data = vec![0; part_size as usize];
-            if let Err(e) = file.read_exact(&mut part_data) {
-                return Err(anyhow::anyhow!("Failed to read file: {}", e));
-            }
-
-            let stream = ByteStream::read_from()
-                .path(file_name)
-                .offset(file_position)
-                .length(Length::Exact(part_size))
-                .build()
-                .await
-                .unwrap();
-
-            bar.set_position(file_position);
-
-            let upload_part_res = client
-                .upload_part()
+            let multipart_upload_res: CreateMultipartUploadOutput = client
+                .create_multipart_upload()
                 .bucket(bucket_name)
                 .key(&pref_key)
-                .upload_id(upload_id)
-                .part_number(part_number)
-                .body(stream)
+                //.tagging(constants::DEFAULT_OBJECT_TAG)
+                .set_tagging(Some(tags.to_string()))
                 .send()
                 .await?;
 
-            let completed_part = CompletedPart::builder()
-                .part_number(part_number)
-                .e_tag(upload_part_res.e_tag.expect("Was unable to upload part"))
+             let upload_id = multipart_upload_res.upload_id()
+                 .ok_or_else(|| anyhow::anyhow!("Failed to get upload ID"))?;
+
+            let mut completed_parts = Vec::new();
+            let mut part_number = 1;
+            let mut file_position: u64 = 0;
+
+            // main loop for file chunks
+            while file_position < file_size {
+                let bytes_remaining = file_size - file_position;
+                let part_size = std::cmp::min(bytes_remaining, PART_SIZE);
+
+                let mut part_data = vec![0; part_size as usize];
+                if let Err(e) = file.read_exact(&mut part_data) {
+                    return Err(anyhow::anyhow!("Failed to read file: {}", e));
+                }
+
+                let stream = ByteStream::read_from()
+                    .path(file_name)
+                    .offset(file_position)
+                    .length(Length::Exact(part_size))
+                    .build()
+                    .await
+                    .unwrap();
+
+                bar.set_position(file_position);
+
+                let upload_part_res = client
+                    .upload_part()
+                    .bucket(bucket_name)
+                    .key(&pref_key)
+                    .upload_id(upload_id)
+                    .part_number(part_number)
+                    .body(stream)
+                    .send()
+                    .await?;
+
+                let completed_part = CompletedPart::builder()
+                    .part_number(part_number)
+                    .e_tag(upload_part_res.e_tag.expect("Was unable to upload part"))
+                    .build();
+
+                completed_parts.push(completed_part);
+
+                file_position += part_size;
+                part_number += 1;
+            }
+
+            let completed_multipart_upload = CompletedMultipartUpload::builder()
+                .set_parts(Some(completed_parts))
                 .build();
 
-            completed_parts.push(completed_part);
+            let _complete_multipart_upload_res = client
+                .complete_multipart_upload()
+                .bucket(bucket_name)
+                .key(&pref_key)
+                .multipart_upload(completed_multipart_upload)
+                .upload_id(upload_id)
+                .send()
+                .await
+                .unwrap();
+        } else {
+            // There is no need for multi-part uploads, as the file is smaller than 4GB
+            println!("========================================");
+            println!(
+                "🚀 | Uploading file: {}, to S3 Bucket: {} | 🚀",
+                key, bucket_name
+            );
+            println!("========================================");
 
-            file_position += part_size;
-            part_number += 1;
+            let body = match ByteStream::read_from()
+                .path(Path::new(file_name))
+                .buffer_size(2048)
+                .build()
+                .await
+                {
+                    Ok(stream) => stream,
+                    Err(e) => return Err(anyhow::anyhow!("Failed to create ByteStream: {}",e)),
+                };
+
+            let request = client
+                .put_object()
+                .bucket(bucket_name)
+                .key(&pref_key)
+                //.tagging(constants::DEFAULT_OBJECT_TAG)
+                //.tagging(&tags)
+                .set_tagging(Some(tags.to_string()))
+                .body(body);
+
+            // for the progress bar
+            let customized = request
+                .customize()
+                .map_request(ProgressBody::<SdkBody>::replace);
+            let out = customized.send().await?;
+            debug!("PutObjectOutput: {:?}", out);
         }
 
-        let completed_multipart_upload = CompletedMultipartUpload::builder()
-            .set_parts(Some(completed_parts))
-            .build();
-
-        let _complete_multipart_upload_res = client
-            .complete_multipart_upload()
-            .bucket(bucket_name)
-            .key(&pref_key)
-            .multipart_upload(completed_multipart_upload)
-            .upload_id(upload_id)
-            .send()
-            .await
-            .unwrap();
-    } else {
-        // There is no need for multi-part uploads, as the file is smaller than 4GB
+        // NOTE: Not sure if this should exist in this upload_object function
+        // or do I move the logic away from here into the main.rs or some
+        // wrapped function
+        //
+        // presign the file and return the URL
+        let presigned_url =
+            file_management::presign_file(client, bucket_name, key, prefix, presigned_time).await?;
         println!("========================================");
-        println!(
-            "🚀 | Uploading file: {}, to S3 Bucket: {} | 🚀",
-            key, bucket_name
-        );
-        println!("========================================");
+        println!("📋 | Good job, here is your file: ");
+        println!("📋 | {}", presigned_url);
 
-        let body = match ByteStream::read_from()
-            .path(Path::new(file_name))
-            .buffer_size(2048)
-            .build()
-            .await
-            {
-                Ok(stream) => stream,
-                Err(e) => return Err(anyhow::anyhow!("Failed to create ByteStream: {}",e)),
-            };
+        presigned_url
 
-        let request = client
-            .put_object()
-            .bucket(bucket_name)
-            .key(&pref_key)
-            //.tagging(constants::DEFAULT_OBJECT_TAG)
-            //.tagging(&tags)
-            .set_tagging(Some(tags.to_string()))
-            .body(body);
+    };
 
-        // for the progress bar
-        let customized = request
-            .customize()
-            .map_request(ProgressBody::<SdkBody>::replace);
-        let out = customized.send().await?;
-        debug!("PutObjectOutput: {:?}", out);
-    }
-
-    // NOTE: Not sure if this should exist in this upload_object function
-    // or do I move the logic away from here into the main.rs or some
-    // wrapped function
-    //
-    // presign the file and return the URL
-    let presigned_url =
-        file_management::presign_file(client, bucket_name, key, prefix, presigned_time).await?;
-    println!("========================================");
-    println!("📋 | Good job, here is your file: ");
-    println!("📋 | {}", presigned_url);
-
-    // if the clipboard is set to true, save to the system clipboard.
-    // if not or not even set do not do that.
-    // if clipboard.unwrap_or(false) {
-    //     utils::set_into_clipboard(presigned_url);
-    // }
 
     Ok(presigned_url)
 }

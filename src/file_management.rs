@@ -1,4 +1,3 @@
-use aws_sdk_s3::operation::get_object_tagging::GetObjectTaggingError;
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::Client;
 use aws_sdk_s3::error::SdkError;
@@ -88,7 +87,6 @@ pub fn calculate_partial_hash(local_path: &Path) -> Result<PartialFileHash, anyh
     let start_bytes_read = file.read(&mut start_buffer)?;
     start_buffer.truncate(start_bytes_read);
     let start_hash = format!("{:x}", md5::compute(&start_buffer));
-    println!("DEBUG - start_hash: {}", &start_hash);
 
     // This is just a check if the file is too small (less than 8KB as is the sample size by
     // default). 
@@ -132,7 +130,9 @@ pub async fn file_exists_in_s3(
             SdkError::ServiceError(err) => {
                 match err.err() {
                     // If the error NotFound is returned - return false
-                    HeadObjectError::NotFound(_) => Ok(false),
+                    HeadObjectError::NotFound(_) => {
+                        Ok(false)
+                    },
                     other_err => Err(anyhow::anyhow!("S3 service error: {:?}", other_err)),
                 }
             }
@@ -185,8 +185,61 @@ pub async fn get_file_tags(
     }
 }
 
-pub fn quick_compare(local_path: &Path) -> Result<String, anyhow::Error> {
+pub async fn quick_compare(local_path: &Path, bucket_name: &str, key: &str, local_object_tags: &ObjectTags, c: &Client ) -> Result<bool, anyhow::Error> {
+    // Get file metadata
+    let file = File::open(local_path)?;
+    let file_size = file.metadata()?.len();
+    let object_metadata = get_file_metadata(c, bucket_name , key).await?;
+    let object_tags = get_file_tags(c, bucket_name, key).await?;
 
+    // NOTE: Very complex way of making sure the length of my remote file is extracted
+    // if I cannot do it, I just return 0 and we reupload
+    let s3_object_len =  match object_metadata {
+        None => {
+            println!("I was unable to determine the file size of the remote object, something went wrong, we are uploading it again");
+            0
+        },
+        Some(metadata) => match metadata.content_length() {
+            None => {
+                println!("I was unable to determine the file size of the remote object, something went wrong, we are uploading it again");
+                0
+            },
+            Some(len) => match len.try_into() {
+                Ok(size) => size,
+                Err(_) => {
+                    println!("I was unable to determine the file size of the remote object, something went wrong, we are uploading it again");
+                    0
+                }
+            }
+        }
+    };
 
-    Ok("foo".into())
+    // Extracting the hash tags
+    // FIX: Clean it up
+    let tags = object_tags.unwrap();
+    let remote_start_hash = tags.tag_set().iter()
+        .find(|tag|tag.key() == "start_hash")
+        .map(|tag| tag.value())
+        .unwrap_or_default();
+
+    let remote_end_hash = tags.tag_set().iter()
+        .find(|tag|tag.key() == "end_hash")
+        .map(|tag| tag.value())
+        .unwrap_or_default();
+
+    // Compare the file size
+    if file_size == s3_object_len {
+        // If Same
+        //   Compare partial hash
+        if local_object_tags.start_hash == remote_start_hash && local_object_tags.end_hash == remote_end_hash {
+            //   If the same - presign
+            Ok(true)
+        } else {
+            println!("⚠️ | There seems to be a file with the same filename already at the destination. They are, also, the same sizes. HOWEVER, their partial hashes differ. I will assume that that they are different, so I will upload this one");
+            Ok(false)
+        }
+    } else {
+        println!("⚠️ | There seems to be a file with the same filename already at the destination. They differ in sizes, I will assume that that they are different, so I will upload this one");
+        Ok(false)
+    }
 }
