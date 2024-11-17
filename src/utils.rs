@@ -29,8 +29,9 @@ use chrono;
 
 // Configure logging
 pub fn setup_logging(verbose: bool) {
-    let env = env_logger::Env::default().filter_or("SHUK_LOG", if verbose { "debug" } else { "warn" });
+    let env = env_logger::Env::default().filter_or("SHUK_LOG", if verbose { "trace" } else { "warn" });
 
+    // TODO: Need to add some color here
     env_logger::Builder::from_env(env)
         .format(|buf, record| {
             writeln!(
