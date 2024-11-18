@@ -8,5 +8,5 @@ bucket_prefix = "bar"
 presigned_time = 86400
 aws_profile = "default"
 use_clipboard = false
-fallback_region "us-east-1"
+fallback_region = "us-east-1"
 "#;

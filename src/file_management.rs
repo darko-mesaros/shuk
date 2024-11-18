@@ -7,6 +7,8 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::{path::Path, time::Duration};
 
+use colored::Colorize;
+
 #[derive(Debug)]
 pub struct ObjectTags {
     pub managed_by: String,
@@ -15,7 +17,7 @@ pub struct ObjectTags {
 }
 
 // This converst the Struct into a list of tags the way the API accepts it
-// NOTE: Maybe I can create a dedicated function for this?
+// NOTE: Maybe I can create a dedicated function for this instead of using Dispay
 impl std::fmt::Display for ObjectTags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -290,7 +292,6 @@ pub async fn quick_compare(
     );
 
     // Extracting the hash tags
-    // FIX: Clean it up
     let tags = object_tags.unwrap();
     let remote_start_hash = tags
         .tag_set()
@@ -330,7 +331,7 @@ pub async fn quick_compare(
             Ok(true)
         } else {
             log::trace!("The filenames are the same, but their partial hashes differ: local_object_tags.start_hash = {} != remote_start_hash {}; local_object_tags.end_hash = {} != remote_end_hash = {} ", &local_object_tags.start_hash, &remote_start_hash, &local_object_tags.end_hash, &remote_end_hash);
-            println!("⚠️ | There seems to be a file with the same filename already at the destination. They are, also, the same sizes. HOWEVER, their partial hashes differ. I will assume that that they are different, so I will upload this one");
+            println!("{} | There seems to be a file with the same filename already at the destination. They are, also, the same sizes. HOWEVER, their partial hashes differ. I will assume that that they are different, so I will upload this one", "NOTE".yellow());
             Ok(false)
         }
     } else {
@@ -339,7 +340,7 @@ pub async fn quick_compare(
             &file_size,
             &s3_object_len
         );
-        println!("⚠️ | There seems to be a file with the same filename already at the destination. They differ in sizes, I will assume that that they are different, so I will upload this one");
+        println!("{} | There seems to be a file with the same filename already at the destination. They differ in sizes, I will assume that that they are different, so I will upload this one", "NOTE".yellow());
         Ok(false)
     }
 }

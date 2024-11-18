@@ -13,6 +13,8 @@ To install this tool, make sure you have `rust` and `cargo` installed and run:
 cargo install shuk
 ```
 
+> **NOTE**: Whenever installing a new region, run `shuk --init` for best results. Sometimes new configuration options are configured
+
 ## Usage 🚀
 ```
 Usage: shuk [OPTIONS] [FILENAME]
@@ -22,6 +24,7 @@ Arguments:
 
 Options:
       --init
+  -v, --verbose  Enable verbose logging
   -h, --help     Print help
   -V, --version  Print version
 ```
@@ -59,3 +62,5 @@ To automatically configure this file just run `shuk --init`
 ## Troubleshooting
 
 This project uses the [log](https://crates.io/crates/log) crate. To get different levels of logging set the `SHUK_LOG` environment variable to either `trace`, `warn`, `info`, `debug`, or `error`. By default it is using the `warn` level.
+
+Or better yet, just pass the `--verbose` flag, as this will run the `trace` level output. Be careful, there will be a lot of stuff on your screen.

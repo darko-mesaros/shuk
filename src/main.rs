@@ -58,7 +58,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // parse configuration
     let shuk_config = match utils::Config::load_config() {
-        Ok(config) => config,
+        Ok(config) => {
+            log::trace!("The configuration is loaded from the file: {:#?}", &config);
+            config
+        },
         Err(e) => {
             eprintln!("Failed to load configuration. Make sure that your config file is located at ~/.config/shuk: {}", e);
             std::process::exit(1);
@@ -89,7 +92,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .map(|s| s.trim_matches('"'))
         .ok_or_else(|| anyhow::anyhow!("Invalid filename provided"))?;
 
-    // FIX: This can be cleaner
     let key_full = if shuk_config.bucket_prefix.is_some() {
         format!(
             "{}{}",
