@@ -149,7 +149,11 @@ pub async fn upload_object(
     shuk_config: &utils::Config,
 ) -> Result<String, anyhow::Error> {
     // Getting file info so we can determine if we will do multi-part or not
-    log::trace!("Start of uploading {:?} to {}", &file_name, &shuk_config.bucket_name);
+    log::trace!(
+        "Start of uploading {:?} to {}",
+        &file_name,
+        &shuk_config.bucket_name
+    );
 
     log::trace!("Opening {:?}", &file_name);
     let mut file = match File::open(file_name) {
@@ -198,7 +202,10 @@ pub async fn upload_object(
         // Actually upload the file
         // We need to do multi-part upload if file is larger than 4GB
         if file_size > 4294967296 {
-            log::trace!("The file is bigger than 4294967296. Size: {}. Using multi-part upload.", &file_size);
+            log::trace!(
+                "The file is bigger than 4294967296. Size: {}. Using multi-part upload.",
+                &file_size
+            );
 
             println!("========================================");
             println!("💾 | File size is bigger than 4GB");
@@ -228,7 +235,10 @@ pub async fn upload_object(
             let upload_id = multipart_upload_res
                 .upload_id()
                 .ok_or_else(|| anyhow::anyhow!("Failed to get upload ID"))?;
-            log::trace!("Generated the upload_id for multi-part uploads: {}", &upload_id);
+            log::trace!(
+                "Generated the upload_id for multi-part uploads: {}",
+                &upload_id
+            );
 
             let mut completed_parts = Vec::new();
             let mut part_number = 1;
@@ -297,7 +307,10 @@ pub async fn upload_object(
                 .unwrap();
         } else {
             // There is no need for multi-part uploads, as the file is smaller than 4GB
-            log::trace!("The file is smaller than 4294967296. Size: {}. No need for multi-part upload.", &file_size);
+            log::trace!(
+                "The file is smaller than 4294967296. Size: {}. No need for multi-part upload.",
+                &file_size
+            );
             println!("========================================");
             println!(
                 "🚀 | Uploading file: {}, to S3 Bucket: {} | 🚀",

@@ -40,7 +40,13 @@ pub async fn presign_file(
     prefix: Option<String>,
     presigned_time: u64,
 ) -> Result<String, anyhow::Error> {
-    log::trace!("Presigning file: {:?}/{} in bucket {} for duration of {}", &prefix, &key, &bucket_name, &presigned_time);
+    log::trace!(
+        "Presigning file: {:?}/{} in bucket {} for duration of {}",
+        &prefix,
+        &key,
+        &bucket_name,
+        &presigned_time
+    );
     let expires_in = Duration::from_secs(presigned_time);
     log::trace!("Sending get_object request that will presing the file");
     let presigned_request = client
@@ -122,26 +128,32 @@ pub async fn file_exists_in_s3(
         Ok(_) => {
             log::trace!("File {:?} has been found in bucket {:?}", &key, &bucket);
             Ok(true)
-        },
-        Err(err) => match err {
-            SdkError::ServiceError(err) => {
-                match err.err() {
-                    // If the error NotFound is returned - return false
-                    HeadObjectError::NotFound(_) => {
-                        log::trace!("File {:?} not found in bucket {:?}", &key, &bucket);
-                        Ok(false)
-                    },
-                    other_err => {
-                        log::warn!("There was a service error when checking for file {:?} in bucket {:?}", &key, &bucket);
-                        Err(anyhow::anyhow!("S3 service error: {:?}", other_err))
-                    },
+        }
+        Err(err) => {
+            match err {
+                SdkError::ServiceError(err) => {
+                    match err.err() {
+                        // If the error NotFound is returned - return false
+                        HeadObjectError::NotFound(_) => {
+                            log::trace!("File {:?} not found in bucket {:?}", &key, &bucket);
+                            Ok(false)
+                        }
+                        other_err => {
+                            log::warn!("There was a service error when checking for file {:?} in bucket {:?}", &key, &bucket);
+                            Err(anyhow::anyhow!("S3 service error: {:?}", other_err))
+                        }
+                    }
+                }
+                other_err => {
+                    log::warn!(
+                        "There was a SDK when checking for file {:?} in bucket {:?}",
+                        &key,
+                        &bucket
+                    );
+                    Err(anyhow::anyhow!("S3 SDK error: {:?}", other_err))
                 }
             }
-            other_err => {
-                log::warn!("There was a SDK when checking for file {:?} in bucket {:?}", &key, &bucket);
-                Err(anyhow::anyhow!("S3 SDK error: {:?}", other_err))
-            },
-        },
+        }
     }
 }
 
@@ -154,25 +166,31 @@ async fn get_file_metadata(
     log::trace!("Getting file metadata for {}:{}", &bucket, &key);
     match client.head_object().bucket(bucket).key(key).send().await {
         Ok(output) => {
-            log::trace!("Metadata has been extracted for {:?} in bucket {:?}", &key, &bucket);
+            log::trace!(
+                "Metadata has been extracted for {:?} in bucket {:?}",
+                &key,
+                &bucket
+            );
             Ok(Some(output))
-        },
-        Err(err) => match err {
-            SdkError::ServiceError(err) => match err.err() {
-                HeadObjectError::NotFound(_) => {
-                    log::warn!("Unable to find {:?} in bucket {:?}, there seems to be an issue getting metadata", &key, &bucket);
-                    Ok(None)
+        }
+        Err(err) => {
+            match err {
+                SdkError::ServiceError(err) => match err.err() {
+                    HeadObjectError::NotFound(_) => {
+                        log::warn!("Unable to find {:?} in bucket {:?}, there seems to be an issue getting metadata", &key, &bucket);
+                        Ok(None)
+                    }
+                    other_err => {
+                        log::warn!("There was a service error when gettinf metadata for file {:?} in bucket {:?}", &key, &bucket);
+                        Err(anyhow::anyhow!("S3 service error: {:?}", other_err))
+                    }
                 },
                 other_err => {
-                    log::warn!("There was a service error when gettinf metadata for file {:?} in bucket {:?}", &key, &bucket);
-                    Err(anyhow::anyhow!("S3 service error: {:?}", other_err))
-                },
-            },
-            other_err => {
-                log::warn!("There was a S3 SDK error when gettinf metadata for file {:?} in bucket {:?}", &key, &bucket);
-                Err(anyhow::anyhow!("S3 SDK error: {:?}", other_err))
-            },
-        },
+                    log::warn!("There was a S3 SDK error when gettinf metadata for file {:?} in bucket {:?}", &key, &bucket);
+                    Err(anyhow::anyhow!("S3 SDK error: {:?}", other_err))
+                }
+            }
+        }
     }
 }
 
@@ -192,13 +210,21 @@ async fn get_file_tags(
         .await
     {
         Ok(output) => {
-            log::trace!("Tags for {} in {} were succesfully retrieved.", &key, &bucket);
+            log::trace!(
+                "Tags for {} in {} were succesfully retrieved.",
+                &key,
+                &bucket
+            );
             Ok(Some(output))
-        },
+        }
         Err(err) => {
-            log::warn!("There was a S3 Service error when getting tags for {} in {}.", &key, &bucket);
+            log::warn!(
+                "There was a S3 Service error when getting tags for {} in {}.",
+                &key,
+                &bucket
+            );
             Err(anyhow::anyhow!("S3 service error: {:?}", err))
-        },
+        }
     }
 }
 
@@ -209,16 +235,31 @@ pub async fn quick_compare(
     local_object_tags: &ObjectTags,
     c: &Client,
 ) -> Result<bool, anyhow::Error> {
-    log::trace!("Comparing local and remote files: {:?} and {}/{}", &local_path, &bucket_name, &key);
+    log::trace!(
+        "Comparing local and remote files: {:?} and {}/{}",
+        &local_path,
+        &bucket_name,
+        &key
+    );
     // Get file metadata
     let file = File::open(local_path)?;
     let file_size = file.metadata()?.len();
     log::trace!("Local file {:?} size: {:?}", &local_path, &file_size);
 
     let object_metadata = get_file_metadata(c, bucket_name, key).await?;
-    log::trace!("Remote file {}{} metadata: {:#?}", &bucket_name, &key, &object_metadata);
+    log::trace!(
+        "Remote file {}{} metadata: {:#?}",
+        &bucket_name,
+        &key,
+        &object_metadata
+    );
     let object_tags = get_file_tags(c, bucket_name, key).await?;
-    log::trace!("Remote file {}{} tags: {:#?}", &bucket_name, &key, &object_metadata);
+    log::trace!(
+        "Remote file {}{} tags: {:#?}",
+        &bucket_name,
+        &key,
+        &object_metadata
+    );
 
     // NOTE: Very complex way of making sure the length of my remote file is extracted
     // if I cannot do it, I just return 0 and we reupload
@@ -241,7 +282,12 @@ pub async fn quick_compare(
             },
         },
     };
-    log::trace!("The size of the remote file {}{}: {}", &bucket_name, &key, &s3_object_len);
+    log::trace!(
+        "The size of the remote file {}{}: {}",
+        &bucket_name,
+        &key,
+        &s3_object_len
+    );
 
     // Extracting the hash tags
     // FIX: Clean it up
@@ -252,7 +298,12 @@ pub async fn quick_compare(
         .find(|tag| tag.key() == "start_hash")
         .map(|tag| tag.value())
         .unwrap_or_default();
-    log::trace!("Remote file {}{} start_hash: {}", &bucket_name, &key, &remote_start_hash);
+    log::trace!(
+        "Remote file {}{} start_hash: {}",
+        &bucket_name,
+        &key,
+        &remote_start_hash
+    );
 
     let remote_end_hash = tags
         .tag_set()
@@ -260,7 +311,12 @@ pub async fn quick_compare(
         .find(|tag| tag.key() == "end_hash")
         .map(|tag| tag.value())
         .unwrap_or_default();
-    log::trace!("Remote file {}{} end_hash: {}", &bucket_name, &key, &remote_end_hash);
+    log::trace!(
+        "Remote file {}{} end_hash: {}",
+        &bucket_name,
+        &key,
+        &remote_end_hash
+    );
 
     // Compare the file size
     if file_size == s3_object_len {
@@ -278,7 +334,11 @@ pub async fn quick_compare(
             Ok(false)
         }
     } else {
-        log::trace!("The filenames are the same, but their sizes differ: file_size {} != s3_object_len {}", &file_size, &s3_object_len);
+        log::trace!(
+            "The filenames are the same, but their sizes differ: file_size {} != s3_object_len {}",
+            &file_size,
+            &s3_object_len
+        );
         println!("⚠️ | There seems to be a file with the same filename already at the destination. They differ in sizes, I will assume that that they are different, so I will upload this one");
         Ok(false)
     }

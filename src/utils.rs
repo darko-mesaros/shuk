@@ -23,13 +23,14 @@ use crate::constants;
 use colored::*;
 use dirs::home_dir;
 
+use chrono;
 use clipboard_ext::prelude::*;
 use clipboard_ext::x11_fork::ClipboardContext;
-use chrono;
 
 // Configure logging
 pub fn setup_logging(verbose: bool) {
-    let env = env_logger::Env::default().filter_or("SHUK_LOG", if verbose { "trace" } else { "warn" });
+    let env =
+        env_logger::Env::default().filter_or("SHUK_LOG", if verbose { "trace" } else { "warn" });
 
     // TODO: Need to add some color here
     env_logger::Builder::from_env(env)
@@ -44,7 +45,6 @@ pub fn setup_logging(verbose: bool) {
         })
         .init();
 }
-
 
 //======================================== AWS
 pub async fn configure_aws(
@@ -164,9 +164,12 @@ pub fn check_for_config() -> bool {
         Ok(b) => {
             log::trace!("Config file path: {:?} exists", &config_file_path);
             b
-        },
+        }
         Err(e) => {
-            log::warn!("I was unable to determine if the config file path: {:?} exists", &config_file_path);
+            log::warn!(
+                "I was unable to determine if the config file path: {:?} exists",
+                &config_file_path
+            );
             eprintln!("Was unable to determine if the config file exists: {}", e);
             exit(1);
         }
