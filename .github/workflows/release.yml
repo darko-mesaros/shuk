@@ -37,6 +37,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
-          bin: bedrust
-          target: ${{ matrix.target }}
+          bin: shuk
+          shuk: ${{ matrix.target }}
           token: ${{ secrets.GITHUB_TOKEN }}
