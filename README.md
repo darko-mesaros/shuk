@@ -13,7 +13,7 @@ To install this tool, make sure you have `rust` and `cargo` installed and run:
 cargo install shuk
 ```
 
-> **NOTE**: Whenever installing a new region, run `shuk --init` for best results. Sometimes new configuration options are configured
+> **NOTE**: Whenever installing a new version, run `shuk --init` for best results. Sometimes new configuration options are added.
 
 ## Usage 🚀
 ```
