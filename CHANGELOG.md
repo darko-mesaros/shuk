@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TODO: Have the ability to configure the chunk size for multi-part uploads
 - TODO: User configurable tags
 
+## [0.4.5] - 2024-11-17
+### Added
+- Shuk now checks if a file is already uploaded, and if it is it just presigns it again.
+- Proper tracing and logging using the log crate
+
+### Changed
+- Cleaned up some code
+- Updated the AWS Crates to latest
+- Fixed region selection during the SDK configuration - MAKE SURE TO UPDATE YOUR CONFIG FILE
+
 ## [0.4.4] - 2024-07-31
 ### Changed
 - Improved some error handling

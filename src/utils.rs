@@ -1,18 +1,17 @@
 use aws_config::environment::credentials::EnvironmentVariableCredentialsProvider;
+use aws_config::imds::credentials::ImdsCredentialsProvider;
 use aws_config::meta::credentials::CredentialsProviderChain;
 use aws_config::meta::region::RegionProviderChain;
 use aws_config::profile::ProfileFileCredentialsProvider;
+use aws_config::profile::ProfileFileRegionProvider;
 use aws_config::BehaviorVersion;
 use aws_types::region::Region;
 
-use std::env;
 use std::fs;
 use std::io;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::exit;
-use tracing::Level;
-use tracing_subscriber::FmtSubscriber;
 
 use clap::Parser;
 
@@ -24,60 +23,58 @@ use crate::constants;
 use colored::*;
 use dirs::home_dir;
 
+use chrono;
 use clipboard_ext::prelude::*;
 use clipboard_ext::x11_fork::ClipboardContext;
 
+// Configure logging
+pub fn setup_logging(verbose: bool) {
+    let env =
+        env_logger::Env::default().filter_or("SHUK_LOG", if verbose { "trace" } else { "warn" });
 
-
-//======================================== TRACING
-pub fn configure_tracing(level: Level) {
-    let subscriber = FmtSubscriber::builder()
-        // all spans/events with a level higher than TRACE (e.g, debug, info, warn, etc.)
-        // will be written to stdout.
-        .with_max_level(level)
-        // completes the builder.
-        .finish();
-
-    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+    // TODO: Need to add some color here
+    env_logger::Builder::from_env(env)
+        .format(|buf, record| {
+            writeln!(
+                buf,
+                "{} [{}] {}",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                record.level(),
+                record.args()
+            )
+        })
+        .init();
 }
-//======================================== END TRACING
+
 //======================================== AWS
-pub async fn configure_aws(fallback_region: &str, profile_name: Option<String>) -> aws_config::SdkConfig {
-    // FIX: 
-    // This does not really work on different regions other than us-west-2 (or the region provided
-    // in the main.rs)
-    let region_provider =
-        // NOTE: this is different than the default Rust SDK behavior which checks AWS_REGION first. Is this intentional?
-        RegionProviderChain::first_try(env::var("AWS_DEFAULT_REGION").ok().map(Region::new))
-            .or_default_provider()
-            .or_else(Region::new(fallback_region.to_string()));
+pub async fn configure_aws(
+    fallback_region: String,
+    profile_name: Option<&String>,
+) -> aws_config::SdkConfig {
+    let profile = profile_name.map(|s| s.as_str()).unwrap_or("default");
+    let region_provider = RegionProviderChain::first_try(
+        ProfileFileRegionProvider::builder()
+            .profile_name(profile)
+            .build(),
+    )
+    .or_else(aws_config::environment::EnvironmentVariableRegionProvider::new())
+    .or_else(aws_config::imds::region::ImdsRegionProvider::builder().build())
+    .or_else(Region::new(fallback_region));
 
-
-    // NOTE: This checks, ENV first, then profile, then it falls back to the whatever the default
-    // is
-
-    // Try this first
-    let mut provider = CredentialsProviderChain::first_try(
+    let credentials_provider = CredentialsProviderChain::first_try(
         "Environment",
         EnvironmentVariableCredentialsProvider::new(),
-    );
-
-    // if profile_name is set (if it is not None)
-    if let Some(profile_name) = profile_name {
-        provider = provider
-            .or_else( // if the profile_name is empty it still configures it as such
-                "Profile",
-                ProfileFileCredentialsProvider::builder()
-                    .profile_name(profile_name) // what if the profile_name is empty?
-                    .build(),
-            );
-
-    };
-
-    let provider = provider.or_default_provider().await;
+    )
+    .or_else(
+        "Profile",
+        ProfileFileCredentialsProvider::builder()
+            .profile_name(profile)
+            .build(),
+    )
+    .or_else("IMDS", ImdsCredentialsProvider::builder().build());
 
     aws_config::defaults(BehaviorVersion::latest())
-        .credentials_provider(provider)
+        .credentials_provider(credentials_provider)
         .region(region_provider)
         .load()
         .await
@@ -100,6 +97,7 @@ pub struct Config {
     pub presigned_time: u64,
     pub aws_profile: Option<String>,
     pub use_clipboard: Option<bool>,
+    pub fallback_region: Option<String>,
 }
 
 // This function exists so we can append "/" to any prefix we read from the configuration file.
@@ -123,9 +121,13 @@ where
 
 impl Config {
     pub fn load_config() -> Result<Self, anyhow::Error> {
+        log::trace!("Parsing the configuration file");
         let home_dir = home_dir().expect("Failed to get HOME directory");
+        log::trace!("Home directory: {:?}", &home_dir);
         let config_dir = home_dir.join(".config/shuk");
+        log::trace!("Config directory: {:?}", &config_dir);
         let config_file_path = config_dir.join(constants::CONFIG_FILE_NAME);
+        log::trace!("Config file path: {:?}", &config_file_path);
 
         if check_for_config() {
             let _contents: String = match fs::read_to_string(config_file_path) {
@@ -149,14 +151,25 @@ impl Config {
 //======================================== END CONFIG PARSING
 //
 pub fn check_for_config() -> bool {
+    log::trace!("Checking for the configuration file");
     let home_dir = home_dir().expect("Failed to get HOME directory");
+    log::trace!("Home directory: {:?}", &home_dir);
     let config_dir = home_dir.join(".config/shuk");
-    let config_file_path = config_dir.join("shuk.toml");
+    log::trace!("Config directory: {:?}", &config_dir);
+    let config_file_path = config_dir.join(constants::CONFIG_FILE_NAME);
+    log::trace!("Config file path: {:?}", &config_file_path);
 
     // returns true or false
     match config_file_path.try_exists() {
-        Ok(b) => b,
+        Ok(b) => {
+            log::trace!("Config file path: {:?} exists", &config_file_path);
+            b
+        }
         Err(e) => {
+            log::warn!(
+                "I was unable to determine if the config file path: {:?} exists",
+                &config_file_path
+            );
             eprintln!("Was unable to determine if the config file exists: {}", e);
             exit(1);
         }
@@ -165,13 +178,20 @@ pub fn check_for_config() -> bool {
 
 // function that creates the configuration files during the `init` command
 pub async fn initialize_config() -> Result<(), anyhow::Error> {
+    log::trace!("Initializing the configuration");
     let home_dir = home_dir().expect("Failed to get HOME directory");
+    log::trace!("Home directory: {:?}", &home_dir);
     let config_dir = home_dir.join(format!(".config/{}", constants::CONFIG_DIR_NAME));
+    log::trace!("Config directory: {:?}", &config_dir);
+    log::trace!("Creating the config directory: {:?}", &config_dir);
     fs::create_dir_all(&config_dir)?;
 
     let config_file_path = config_dir.join(constants::CONFIG_FILE_NAME);
+    log::trace!("Config file path: {:?}", &config_file_path);
     let config_content = constants::CONFIG_FILE.to_string();
+    log::trace!("Config file contents: {:?}", &config_content);
 
+    log::trace!("Parsing default config into TOML");
     let mut default_config: Config =
         toml::from_str::<Config>(&config_content).expect("default config must be valid");
 
@@ -181,12 +201,14 @@ pub async fn initialize_config() -> Result<(), anyhow::Error> {
     io::stdout().flush()?; // so the answers are typed on the same line as above
     io::stdin().read_line(&mut bucket_name)?;
     default_config.bucket_name = bucket_name.trim().to_string();
+    log::trace!("Using bucket name: {}", &default_config.bucket_name);
 
     let mut bucket_prefix = String::new();
     print!("Enter the prefix (folder) in that bucket where the files will be uploaded (leave blank for the root of the bucket): ");
     io::stdout().flush()?; // so the answers are typed on the same line as above
     io::stdin().read_line(&mut bucket_prefix)?;
     default_config.bucket_prefix = Some(bucket_prefix.trim().to_string());
+    log::trace!("Using bucket prefix: {:?}", &default_config.bucket_prefix);
 
     let mut config_profile = String::new();
     print!("Enter the AWS profile name (enter for None): ");
@@ -198,6 +220,7 @@ pub async fn initialize_config() -> Result<(), anyhow::Error> {
     } else {
         Some(config_profile.to_string())
     };
+    log::trace!("Using profile : {:?}", &default_config.aws_profile);
 
     fs::write(&config_file_path, toml::to_string_pretty(&default_config)?)?;
     println!(
@@ -217,13 +240,14 @@ pub fn print_warning(s: &str) {
 // Store the prisigned url into clipboard
 pub fn set_into_clipboard(s: String) -> Result<(), Box<dyn std::error::Error>> {
     // NOTE: Uses the rust-clipboard-ext crate. Forks the process and sets the x11 clipboard
+    log::trace!("Setting into clipboard: {:?}", &s);
     let mut ctx: ClipboardContext = ClipboardContext::new()?;
     ctx.set_contents(s.to_owned()).unwrap();
     Ok(())
 }
 
 //======================================== ARGUMENT PARSING
-#[derive(Parser, Default)]
+#[derive(Debug, Parser, Default)]
 #[command(version, about, long_about = None)]
 pub struct Args {
     #[arg(required_unless_present("init"))]
@@ -231,5 +255,7 @@ pub struct Args {
     // the init flag. So we can copy the config files locally
     #[arg(long, conflicts_with("filename"))]
     pub init: bool,
+    #[arg(short, long, help = "Enable verbose logging")]
+    pub verbose: bool,
 }
 //=========================ALPHA=============== END ARGUMENT PARSING

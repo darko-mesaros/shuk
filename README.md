@@ -4,7 +4,7 @@
 
 ⚠️**BETA SOFTWARE**⚠️
 
-*Shuk* is used to upload files *of any size* to [Amazon S3](https://aws.amazon.com/s3/) and have them shared with others via a [presigned URL](https://docs.aws.amazon.com/AmazonS3/latest/userguide/ShareObjectPreSignedURL.html).
+*Shuk* is used to upload files *of any size* to [Amazon S3](https://aws.amazon.com/s3/) and have them shared with others via a [presigned URL](https://docs.aws.amazon.com/AmazonS3/latest/userguide/ShareObjectPreSignedURL.html). If the same file already exists at the same location, it will **only presign it**.
 
 ## Installation 💾
 
@@ -12,6 +12,8 @@ To install this tool, make sure you have `rust` and `cargo` installed and run:
 ```
 cargo install shuk
 ```
+
+> **NOTE**: Whenever installing a new region, run `shuk --init` for best results. Sometimes new configuration options are configured
 
 ## Usage 🚀
 ```
@@ -22,6 +24,7 @@ Arguments:
 
 Options:
       --init
+  -v, --verbose  Enable verbose logging
   -h, --help     Print help
   -V, --version  Print version
 ```
@@ -46,6 +49,8 @@ presigned_time = 86400
 aws_profile = "default"
 # Should the presigned URL be stored directly to the clipboard or not
 use_clipboard = false
+# Set the fallback region
+fallback_region = "us-east-1"
 ```
 
 To automatically configure this file just run `shuk --init`
@@ -53,3 +58,9 @@ To automatically configure this file just run `shuk --init`
 ## Build Notes
 
 - For the `use_clipboard` feature to compile on X11, you need the `xorg-dev` library.
+
+## Troubleshooting
+
+This project uses the [log](https://crates.io/crates/log) crate. To get different levels of logging set the `SHUK_LOG` environment variable to either `trace`, `warn`, `info`, `debug`, or `error`. By default it is using the `warn` level.
+
+Or better yet, just pass the `--verbose` flag, as this will run the `trace` level output. Be careful, there will be a lot of stuff on your screen.
