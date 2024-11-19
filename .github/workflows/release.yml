@@ -83,22 +83,33 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
+          
           if [[ "${{ matrix.cross_compile }}" == "true" ]]; then
+            # Enable arm64 architecture and add required repositories
+            sudo dpkg --add-architecture arm64
+            sudo apt-get update
+            
+            # Install cross-compilation toolchain
             sudo apt-get install -y \
               gcc-aarch64-linux-gnu \
               g++-aarch64-linux-gnu \
               libc6-dev-arm64-cross
-          fi
-          if [[ "${{ matrix.install_xcb }}" == "true" ]]; then
-            sudo apt-get install -y \
-              libxcb-shape0-dev \
-              libxcb-xfixes0-dev
             
-            if [[ "${{ matrix.cross_compile }}" == "true" ]]; then
+            # Install arm64 libraries
+            if [[ "${{ matrix.install_xcb }}" == "true" ]]; then
+              # Install native and arm64 XCB libraries
               sudo apt-get install -y \
+                libxcb-shape0-dev \
+                libxcb-xfixes0-dev \
+                crossbuild-essential-arm64 \
                 libxcb-shape0-dev:arm64 \
                 libxcb-xfixes0-dev:arm64
             fi
+          elif [[ "${{ matrix.install_xcb }}" == "true" ]]; then
+            # Install only native XCB libraries for non-cross-compile builds
+            sudo apt-get install -y \
+              libxcb-shape0-dev \
+              libxcb-xfixes0-dev
           fi
 
       # Install Windows MSVC build tools
