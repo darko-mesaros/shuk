@@ -1,4 +1,4 @@
-name: Release
+name: Test Release
 
 permissions:
   contents: write
@@ -6,10 +6,21 @@ permissions:
 on:
   release:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Run in test mode (skips actual release creation)'
+        type: boolean
+        default: true
+      test_version:
+        description: 'Test version number (e.g., 0.0.0-test)'
+        type: string
+        default: '0.0.0-test'
 
 jobs:
   create-release:
     runs-on: ubuntu-latest
+    if: ${{ !inputs.test_mode }}
     steps:
       - uses: actions/checkout@v4
       - uses: taiki-e/create-gh-release-action@v1
@@ -17,26 +28,85 @@ jobs:
           changelog: CHANGELOG.md
           token: ${{ secrets.GITHUB_TOKEN }}
 
+  test-release:
+    runs-on: ubuntu-latest
+    if: ${{ inputs.test_mode }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Simulate release creation
+        run: |
+          echo "Testing release process for version ${{ inputs.test_version }}"
+          echo "Checking CHANGELOG.md exists"
+          test -f CHANGELOG.md || (echo "CHANGELOG.md not found" && exit 1)
+
   upload-assets:
-    needs: create-release
+    needs: [create-release, test-release]
+    if: ${{ always() && (needs.create-release.result == 'success' || needs.test-release.result == 'success') }}
     strategy:
       matrix:
         include:
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
+            install_xcb: true
           - target: aarch64-apple-darwin
             os: macos-latest
+            install_xcb: false
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
+            install_xcb: true
           - target: x86_64-apple-darwin
             os: macos-latest
+            install_xcb: false
           - target: universal-apple-darwin
             os: macos-latest
+            install_xcb: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      
+      # Install XCB dependencies for Linux builds
+      - name: Install XCB dependencies
+        if: matrix.install_xcb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-shape0-dev libxcb-xfixes0-dev
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+          
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --target ${{ matrix.target }} --release
+
+      - name: Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --target ${{ matrix.target }}
+
       - uses: taiki-e/upload-rust-binary-action@v1
+        if: ${{ !inputs.test_mode }}
         with:
           bin: shuk
-          shuk: ${{ matrix.target }}
+          target: ${{ matrix.target }}
           token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Package binary (Test Mode)
+        if: ${{ inputs.test_mode }}
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf ../../../shuk-${{ matrix.target }}.tar.gz shuk*
+          cd ../../..
+          
+      - name: Upload artifact (Test Mode)
+        if: ${{ inputs.test_mode }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: shuk-${{ matrix.target }}
+          path: shuk-${{ matrix.target }}.tar.gz
