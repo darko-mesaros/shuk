@@ -46,71 +46,33 @@ jobs:
       matrix:
         include:
           # Linux builds
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-            install_xcb: true
-            cross_compile: true
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             install_xcb: true
-            cross_compile: false
           # macOS builds
           - target: aarch64-apple-darwin
             os: macos-latest
-            install_xcb: false
-            cross_compile: false
           - target: x86_64-apple-darwin
             os: macos-latest
-            install_xcb: false
-            cross_compile: false
           # Windows builds
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            install_xcb: false
-            cross_compile: false
             extension: .exe
           - target: i686-pc-windows-msvc
             os: windows-latest
-            install_xcb: false
-            cross_compile: false
             extension: .exe
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       
-      # Install cross-compilation tools and XCB dependencies for Linux builds
+      # Install XCB dependencies for Linux builds
       - name: Install Linux dependencies
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && matrix.install_xcb
         run: |
           sudo apt-get update
-          
-          if [[ "${{ matrix.cross_compile }}" == "true" ]]; then
-            # Enable arm64 architecture and add required repositories
-            sudo dpkg --add-architecture arm64
-            sudo apt-get update
-            
-            # Install cross-compilation toolchain
-            sudo apt-get install -y \
-              gcc-aarch64-linux-gnu \
-              g++-aarch64-linux-gnu \
-              libc6-dev-arm64-cross
-            
-            # Install arm64 libraries
-            if [[ "${{ matrix.install_xcb }}" == "true" ]]; then
-              # Install native and arm64 XCB libraries
-              sudo apt-get install -y \
-                libxcb-shape0-dev \
-                libxcb-xfixes0-dev \
-                crossbuild-essential-arm64 \
-                libxcb-shape0-dev:arm64 \
-                libxcb-xfixes0-dev:arm64
-            fi
-          elif [[ "${{ matrix.install_xcb }}" == "true" ]]; then
-            # Install only native XCB libraries for non-cross-compile builds
-            sudo apt-get install -y \
-              libxcb-shape0-dev \
-              libxcb-xfixes0-dev
-          fi
+          sudo apt-get install -y \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev
 
       # Install Windows MSVC build tools
       - name: Install Windows build tools
@@ -123,14 +85,6 @@ jobs:
           toolchain: stable
           target: ${{ matrix.target }}
           override: true
-          
-      # Set up cross-compilation environment variables
-      - name: Setup cross-compilation env
-        if: matrix.cross_compile
-        run: |
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++" >> $GITHUB_ENV
           
       - name: Build
         uses: actions-rs/cargo@v1
