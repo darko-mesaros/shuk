@@ -236,7 +236,7 @@ async fn main() -> Result<(), anyhow::Error> {
         Err(_) => chrono::Utc::now(),
     };
 
-    println!("{}", "Shuk Metadata:".magenta());
+    println!("{}", "💾 | Shuk Metadata:".magenta());
     println!("{}{}", "Total file size: ".green(), total_file_size);
     println!("{}{}", "Total files: ".green(), number_of_files);
     println!("{}{}", "Last modified at: ".green(), last_modified_file);
