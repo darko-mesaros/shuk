@@ -9,11 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## TODO 📋
 
-- TODO: Ability to delete objects
 - TODO: Ability to archive objects
 - TODO: Have the progress bar remain on screen, or show summary of upload.
 - TODO: Have the ability to configure the chunk size for multi-part uploads
 - TODO: User configurable tags
+- TODO: Handle multi-part uploads with parallel processing
+
+## [0.4.7] - 2024-11-27
+### Added
+- Added file managent capabilities. Now you can manage your files that were uploaded by shuk (pre-sign again, and delete)
+- Medatadata is saved locally and in the S3 bucket
+
+### Changed
+- Optimized some upload and pre-sign code.
 
 ## [0.4.6] - 2024-11-17
 ### Added

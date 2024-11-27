@@ -9,6 +9,10 @@ use std::{path::Path, time::Duration};
 
 use colored::Colorize;
 
+use crate::metadata::ShukMetadata;
+use dialoguer::Confirm;
+use dialoguer::{theme::ColorfulTheme, FuzzySelect, Select};
+
 #[derive(Debug)]
 pub struct ObjectTags {
     pub managed_by: String,
@@ -39,12 +43,10 @@ pub async fn presign_file(
     client: &Client,
     bucket_name: &str,
     key: &str,
-    prefix: Option<String>,
     presigned_time: u64,
 ) -> Result<String, anyhow::Error> {
     log::trace!(
-        "Presigning file: {:?}/{} in bucket {} for duration of {}",
-        &prefix,
+        "Presigning file: {} in bucket {} for duration of {}",
         &key,
         &bucket_name,
         &presigned_time
@@ -54,13 +56,13 @@ pub async fn presign_file(
     let presigned_request = client
         .get_object()
         .bucket(bucket_name)
-        .key(format!("{}{}", prefix.unwrap_or("".into()), key))
+        .key(key)
         .presigned(PresigningConfig::expires_in(expires_in)?)
         .await?;
 
     Ok(presigned_request.uri().to_string())
 }
-
+// TODO: Is this being used anywhere?
 pub fn calculate_file_md5<P: AsRef<Path>>(path: P) -> Result<String, anyhow::Error> {
     // Open and read the entire file
     let mut file = File::open(path)?;
@@ -108,7 +110,7 @@ pub fn calculate_partial_hash(local_path: &Path) -> Result<PartialFileHash, anyh
         format!("{:x}", md5::compute(&end_buffer))
     } else {
         // The file is too small just use the start_hash
-        log::warn!("The file seems to be smaller than the sample size for hashing. Not sure how we got here.");
+        log::trace!("The file seems to be smaller than the sample size for hashing.");
         start_hash.clone()
     };
     log::trace!("End hash of {:?} is {:?}", &local_path, &end_hash);
@@ -342,5 +344,69 @@ pub async fn quick_compare(
         );
         println!("{} | There seems to be a file with the same filename already at the destination. They differ in sizes, I will assume that that they are different, so I will upload this one", "NOTE".yellow());
         Ok(false)
+    }
+}
+
+#[derive(Debug)]
+pub enum FileAction {
+    PreSign,
+    Delete,
+}
+
+// File selector for file management
+pub fn prompt_for_file_selection(metadata: &ShukMetadata) -> Result<String, anyhow::Error> {
+    if let Some(files) = &metadata.files {
+        let filenames: Vec<&String> = files.iter().map(|file| &file.filename).collect();
+        let idx = FuzzySelect::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select a file to manage (CTRL+C to quit):")
+            .items(&filenames)
+            .interact()?;
+
+        Ok(filenames[idx].clone())
+    } else {
+        Err(anyhow::anyhow!("No files found in your managed location"))
+    }
+}
+
+pub fn select_action(filename: &String) -> Result<FileAction, anyhow::Error> {
+    let actions = vec!["delete", "pre-sign"];
+    let selection = Select::new()
+        .with_prompt(format!("What do you want to do with {}?", filename))
+        .items(&actions)
+        .interact()?;
+
+    match selection {
+        0 => Ok(FileAction::Delete),
+        1 => Ok(FileAction::PreSign),
+        _ => Err(anyhow::anyhow!("Invalid selection")),
+    }
+}
+
+pub async fn delete_file(
+    filename: &String,
+    bucket: &String,
+    s3_client: &aws_sdk_s3::Client,
+) -> Result<(), anyhow::Error> {
+    let confirmation = Confirm::new()
+        .with_prompt(format!(
+            "Are you sure you want to {} {} ?",
+            "delete".red(),
+            filename.yellow()
+        ))
+        .interact()?;
+
+    if confirmation {
+        println!("Deleting {} ... ", filename);
+        s3_client
+            .delete_object()
+            .bucket(bucket)
+            .key(filename)
+            .send()
+            .await?;
+        println!("File {} deleted", filename.red());
+        Ok(())
+    } else {
+        println!("{}", "File deletion canceled".red());
+        Ok(())
     }
 }

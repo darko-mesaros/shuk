@@ -184,11 +184,17 @@ pub async fn upload_object(
     let presigned_url: String = if just_presign {
         log::trace!("The file needs to only be presigned.");
 
+        let full_key = format!(
+            "{}{}",
+            shuk_config.bucket_prefix.clone().unwrap_or_default(),
+            key,
+        );
+
         let presigned_url = file_management::presign_file(
             client,
             &shuk_config.bucket_name,
-            key,
-            shuk_config.bucket_prefix.clone(),
+            full_key.as_str(),
+            //shuk_config.bucket_prefix.clone(),
             shuk_config.presigned_time,
         )
         .await?;
@@ -259,13 +265,19 @@ pub async fn upload_object(
                     return Err(anyhow::anyhow!("Failed to read file: {}", e));
                 }
 
-                let stream = ByteStream::read_from()
+                let stream = match ByteStream::read_from()
                     .path(file_name)
                     .offset(file_position)
                     .length(Length::Exact(part_size))
                     .build()
-                    .await
-                    .unwrap();
+                    .await {
+                        Ok(bytestream) => bytestream,
+                        Err(e) => {
+                            // NOTE: If we cannot load the file into ByteStream, just error out
+                            eprint!("Failed to load the file into ByteStream: {}", e);
+                            std::process::exit(1);
+                        }
+                };
 
                 bar.set_position(file_position);
 
@@ -303,8 +315,7 @@ pub async fn upload_object(
                 .multipart_upload(completed_multipart_upload)
                 .upload_id(upload_id)
                 .send()
-                .await
-                .unwrap();
+                .await?;
         } else {
             // There is no need for multi-part uploads, as the file is smaller than 4GB
             log::trace!(
@@ -350,11 +361,16 @@ pub async fn upload_object(
         // wrapped function
         //
         // presign the file and return the URL
+        let full_key = format!(
+            "{}{}",
+            shuk_config.bucket_prefix.clone().unwrap_or_default(),
+            key,
+        );
         let presigned_url = file_management::presign_file(
             client,
             &shuk_config.bucket_name,
-            key,
-            shuk_config.bucket_prefix.clone(),
+            full_key.as_str(),
+            //shuk_config.bucket_prefix.clone(),
             shuk_config.presigned_time,
         )
         .await?;

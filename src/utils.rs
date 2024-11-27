@@ -37,9 +37,12 @@ pub fn setup_logging(verbose: bool) {
         .format(|buf, record| {
             writeln!(
                 buf,
-                "{} [{}] {}",
+                "{} [{}] [{}:{}:{}] {}",
                 chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
                 record.level(),
+                record.file().unwrap_or("unknown"),
+                record.line().unwrap_or(0),
+                record.target(),
                 record.args()
             )
         })
@@ -250,7 +253,8 @@ pub fn set_into_clipboard(s: String) -> Result<(), Box<dyn std::error::Error>> {
 #[derive(Debug, Parser, Default)]
 #[command(version, about, long_about = None)]
 pub struct Args {
-    #[arg(required_unless_present("init"))]
+    //#[arg(required_unless_present("init"))]
+    #[arg(conflicts_with("init"))]
     pub filename: Option<PathBuf>,
     // the init flag. So we can copy the config files locally
     #[arg(long, conflicts_with("filename"))]
