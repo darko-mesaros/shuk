@@ -1,8 +1,6 @@
 name: Test Release
-
 permissions:
   contents: write
-
 on:
   release:
     types: [created]
@@ -16,7 +14,6 @@ on:
         description: 'Test version number (e.g., 0.0.0-test)'
         type: string
         default: '0.0.0-test'
-
 jobs:
   create-release:
     runs-on: ubuntu-latest
@@ -27,7 +24,6 @@ jobs:
         with:
           changelog: CHANGELOG.md
           token: ${{ secrets.GITHUB_TOKEN }}
-
   test-release:
     runs-on: ubuntu-latest
     if: ${{ inputs.test_mode }}
@@ -38,72 +34,89 @@ jobs:
           echo "Testing release process for version ${{ inputs.test_version }}"
           echo "Checking CHANGELOG.md exists"
           test -f CHANGELOG.md || (echo "CHANGELOG.md not found" && exit 1)
-
   upload-assets:
     needs: [create-release, test-release]
     if: ${{ always() && (needs.create-release.result == 'success' || needs.test-release.result == 'success') }}
     strategy:
       matrix:
         include:
-          - target: aarch64-unknown-linux-gnu
+          # x86_64 targets
+          - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
-            install_xcb: true
-          - target: aarch64-apple-darwin
-            os: macos-latest
-            install_xcb: false
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            install_xcb: true
           - target: x86_64-apple-darwin
             os: macos-latest
-            install_xcb: false
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          # ARM64 targets
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          # Universal macOS binary
           - target: universal-apple-darwin
             os: macos-latest
-            install_xcb: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       
-      # Install XCB dependencies for Linux builds
-      - name: Install XCB dependencies
-        if: matrix.install_xcb
+      # Install cross-compilation tools for ARM on Linux
+      - name: Install Linux dependencies
+        if: contains(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxcb-shape0-dev libxcb-xfixes0-dev
+          sudo apt-get install -y musl-tools pkg-config gcc-aarch64-linux-gnu
 
+      # Install Rust
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           target: ${{ matrix.target }}
           override: true
-          
-      - name: Build
+
+      # Install cargo-zigbuild for better musl support
+      - name: Install cargo-zigbuild (Linux)
+        if: contains(matrix.target, 'linux-musl')
+        run: cargo install cargo-zigbuild
+
+      # Build steps
+      - name: Build (Linux musl)
+        if: contains(matrix.target, 'linux-musl')
+        run: cargo zigbuild --target ${{ matrix.target }} --release
+
+      - name: Build (non-Linux)
+        if: "!contains(matrix.target, 'linux-musl')"
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --target ${{ matrix.target }} --release
 
+      # Test step (skip for cross-compiled targets)
       - name: Test
+        if: "!contains(matrix.target, 'aarch64') && matrix.target != 'universal-apple-darwin'"
         uses: actions-rs/cargo@v1
         with:
           command: test
           args: --target ${{ matrix.target }}
 
+      # Upload for actual releases
       - uses: taiki-e/upload-rust-binary-action@v1
         if: ${{ !inputs.test_mode }}
         with:
           bin: shuk
           target: ${{ matrix.target }}
           token: ${{ secrets.GITHUB_TOKEN }}
-      
+
+      # Package for test mode
       - name: Package binary (Test Mode)
         if: ${{ inputs.test_mode }}
         run: |
           cd target/${{ matrix.target }}/release
           tar czf ../../../shuk-${{ matrix.target }}.tar.gz shuk*
           cd ../../..
-          
+        shell: bash
+
+      # Upload artifacts for test mode
       - name: Upload artifact (Test Mode)
         if: ${{ inputs.test_mode }}
         uses: actions/upload-artifact@v3

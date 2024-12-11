@@ -24,8 +24,15 @@ use colored::*;
 use dirs::home_dir;
 
 use chrono;
-use clipboard_ext::prelude::*;
-use clipboard_ext::x11_fork::ClipboardContext;
+//use clipboard_ext::prelude::*;
+//use clipboard_ext::x11_fork::ClipboardContext;
+
+//use arboard::Clipboard;
+
+//use copypasta::{ClipboardContext, ClipboardProvider};
+
+use std::process::{Command, Stdio};
+use std::env::consts::OS;
 
 // Configure logging
 pub fn setup_logging(verbose: bool) {
@@ -239,10 +246,73 @@ pub fn print_warning(s: &str) {
 
 // Store the prisigned url into clipboard
 pub fn set_into_clipboard(s: String) -> Result<(), Box<dyn std::error::Error>> {
-    // NOTE: Uses the rust-clipboard-ext crate. Forks the process and sets the x11 clipboard
     log::trace!("Setting into clipboard: {:?}", &s);
-    let mut ctx: ClipboardContext = ClipboardContext::new()?;
-    ctx.set_contents(s.to_owned()).unwrap();
+    
+    match std::env::consts::OS {
+        "linux" => {
+            // Try Wayland first
+            if let Ok(output) = Command::new("wl-copy")
+                .stdin(Stdio::piped())
+                .arg(&s)
+                .output() {
+                if output.status.success() {
+                    return Ok(());
+                }
+            }
+            
+            // Fall back to X11 using xclip
+            let mut child = Command::new("xclip")
+                .arg("-selection")
+                .arg("clipboard")
+                .stdin(Stdio::piped())
+                .spawn()
+                .map_err(|e| format!("Failed to spawn xclip: {}", e))?;
+            
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(s.as_bytes())
+                    .map_err(|e| format!("Failed to write to xclip: {}", e))?;
+            } else {
+                return Err("Failed to open stdin for xclip".into());
+            }
+            
+            child.wait()
+                .map_err(|e| format!("Failed to wait for xclip: {}", e))?;
+        },
+        "macos" => {
+            let mut child = Command::new("pbcopy")
+                .stdin(Stdio::piped())
+                .spawn()
+                .map_err(|e| format!("Failed to spawn pbcopy: {}", e))?;
+            
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(s.as_bytes())
+                    .map_err(|e| format!("Failed to write to pbcopy: {}", e))?;
+            } else {
+                return Err("Failed to open stdin for pbcopy".into());
+            }
+            
+            child.wait()
+                .map_err(|e| format!("Failed to wait for pbcopy: {}", e))?;
+        },
+        "windows" => {
+            let mut child = Command::new("clip")
+                .stdin(Stdio::piped())
+                .spawn()
+                .map_err(|e| format!("Failed to spawn clip: {}", e))?;
+
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(s.as_bytes())
+                    .map_err(|e| format!("Failed to write to clip: {}", e))?;
+            } else {
+                return Err("Failed to open stdin for clip".into());
+            }
+
+            child.wait()
+                .map_err(|e| format!("Failed to wait for clip: {}", e))?;
+        },
+        os => return Err(format!("Unsupported operating system: {}", os).into())
+    }
+    
     Ok(())
 }
 
