@@ -53,8 +53,8 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
           # Universal macOS binary
-          - target: universal-apple-darwin
-            os: macos-latest
+          #- target: universal-apple-darwin
+            #  os: macos-latest
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
