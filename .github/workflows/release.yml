@@ -65,6 +65,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y musl-tools pkg-config gcc-aarch64-linux-gnu
+          wget https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+          tar xf zig-linux-x86_64-0.13.0.tar.xz
+          echo "$PWD/zig-linux-x86_64-0.13.0" >> $GITHUB_PATH
+
 
       # Install Rust
       - name: Install Rust
@@ -82,7 +86,9 @@ jobs:
       # Build steps
       - name: Build (Linux musl)
         if: contains(matrix.target, 'linux-musl')
-        run: cargo zigbuild --target ${{ matrix.target }} --release
+        run: |
+          zig version
+          cargo zigbuild --target ${{ matrix.target }} --release
 
       - name: Build (non-Linux)
         if: "!contains(matrix.target, 'linux-musl')"
