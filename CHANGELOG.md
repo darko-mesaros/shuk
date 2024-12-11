@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TODO: Have the ability to configure the chunk size for multi-part uploads
 - TODO: User configurable tags
 
+## [0.4.7] - 2024-12-10
+
+### Changed
+- Reworked the way copy to clipboard works. Now we use native tools within the OS (`xclip`, `pbcopy`, `clip.exe`)
+- Configured the build to be statically linked
+
 ## [0.4.6] - 2024-11-17
 ### Added
 - Shuk now checks if a file is already uploaded, and if it is it just presigns it again.
