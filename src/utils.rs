@@ -24,15 +24,8 @@ use colored::*;
 use dirs::home_dir;
 
 use chrono;
-//use clipboard_ext::prelude::*;
-//use clipboard_ext::x11_fork::ClipboardContext;
-
-//use arboard::Clipboard;
-
-//use copypasta::{ClipboardContext, ClipboardProvider};
 
 use std::process::{Command, Stdio};
-use std::env::consts::OS;
 
 // Configure logging
 pub fn setup_logging(verbose: bool) {
