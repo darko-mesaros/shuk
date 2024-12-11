@@ -57,7 +57,7 @@ To automatically configure this file just run `shuk --init`
 
 ## Build Notes
 
-- For the `use_clipboard` feature to compile on X11, you need the `xorg-dev` library.
+Check the `BUILDING.md` file in this repo.
 
 ## Troubleshooting
 

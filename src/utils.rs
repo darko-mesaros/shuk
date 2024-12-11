@@ -239,73 +239,134 @@ pub fn print_warning(s: &str) {
 
 // Store the prisigned url into clipboard
 pub fn set_into_clipboard(s: String) -> Result<(), Box<dyn std::error::Error>> {
-    log::trace!("Setting into clipboard: {:?}", &s);
-    
+    log::trace!("Attempting to set clipboard content");
+    log::debug!("Content length to be copied: {}", s.len());
+
     match std::env::consts::OS {
         "linux" => {
+            log::trace!("Detected Linux OS, attempting clipboard operations");
+
             // Try Wayland first
+            log::debug!("Attempting Wayland clipboard (wl-copy)");
             if let Ok(output) = Command::new("wl-copy")
                 .stdin(Stdio::piped())
                 .arg(&s)
-                .output() {
+                .output()
+            {
                 if output.status.success() {
+                    log::debug!("Successfully copied to Wayland clipboard");
                     return Ok(());
                 }
+                log::debug!("Wayland clipboard attempt failed, falling back to X11");
+            } else {
+                log::debug!("wl-copy not available, falling back to X11");
             }
-            
+
             // Fall back to X11 using xclip
+            log::debug!("Attempting X11 clipboard (xclip)");
             let mut child = Command::new("xclip")
                 .arg("-selection")
                 .arg("clipboard")
                 .stdin(Stdio::piped())
                 .spawn()
-                .map_err(|e| format!("Failed to spawn xclip: {}", e))?;
-            
+                .map_err(|e| {
+                    log::error!("Failed to spawn xclip: {}", e);
+                    format!("Failed to spawn xclip (is it installed?): {}", e)
+                })?;
+
             if let Some(mut stdin) = child.stdin.take() {
-                stdin.write_all(s.as_bytes())
-                    .map_err(|e| format!("Failed to write to xclip: {}", e))?;
+                stdin.write_all(s.as_bytes()).map_err(|e| {
+                    log::error!("Failed to write to xclip stdin: {}", e);
+                    format!("Failed to write to xclip: {}", e)
+                })?;
             } else {
+                log::error!("Failed to open stdin for xclip");
                 return Err("Failed to open stdin for xclip".into());
             }
-            
-            child.wait()
-                .map_err(|e| format!("Failed to wait for xclip: {}", e))?;
+
+            let status = child.wait().map_err(|e| {
+                log::error!("Failed to wait for xclip process: {}", e);
+                format!("Failed to wait for xclip: {}", e)
+            })?;
+
+            if !status.success() {
+                log::error!("xclip process failed with status: {}", status);
+                return Err(format!("xclip failed with status: {}", status).into());
+            }
+
+            log::debug!("Successfully copied to X11 clipboard");
         },
         "macos" => {
+            log::trace!("Detected macOS, attempting clipboard operation with pbcopy");
             let mut child = Command::new("pbcopy")
                 .stdin(Stdio::piped())
                 .spawn()
-                .map_err(|e| format!("Failed to spawn pbcopy: {}", e))?;
-            
+                .map_err(|e| {
+                    log::error!("Failed to spawn pbcopy: {}", e);
+                    format!("Failed to spawn pbcopy: {}", e)
+                })?;
+
             if let Some(mut stdin) = child.stdin.take() {
-                stdin.write_all(s.as_bytes())
-                    .map_err(|e| format!("Failed to write to pbcopy: {}", e))?;
+                stdin.write_all(s.as_bytes()).map_err(|e| {
+                    log::error!("Failed to write to pbcopy stdin: {}", e);
+                    format!("Failed to write to pbcopy: {}", e)
+                })?;
             } else {
+                log::error!("Failed to open stdin for pbcopy");
                 return Err("Failed to open stdin for pbcopy".into());
             }
-            
-            child.wait()
-                .map_err(|e| format!("Failed to wait for pbcopy: {}", e))?;
+
+            let status = child.wait().map_err(|e| {
+                log::error!("Failed to wait for pbcopy process: {}", e);
+                format!("Failed to wait for pbcopy: {}", e)
+            })?;
+
+            if !status.success() {
+                log::error!("pbcopy process failed with status: {}", status);
+                return Err(format!("pbcopy failed with status: {}", status).into());
+            }
+
+            log::debug!("Successfully copied to macOS clipboard");
         },
         "windows" => {
+            log::trace!("Detected Windows, attempting clipboard operation with clip.exe");
             let mut child = Command::new("clip")
                 .stdin(Stdio::piped())
                 .spawn()
-                .map_err(|e| format!("Failed to spawn clip: {}", e))?;
+                .map_err(|e| {
+                    log::error!("Failed to spawn clip.exe: {}", e);
+                    format!("Failed to spawn clip.exe: {}", e)
+                })?;
 
             if let Some(mut stdin) = child.stdin.take() {
-                stdin.write_all(s.as_bytes())
-                    .map_err(|e| format!("Failed to write to clip: {}", e))?;
+                stdin.write_all(s.as_bytes()).map_err(|e| {
+                    log::error!("Failed to write to clip.exe stdin: {}", e);
+                    format!("Failed to write to clip.exe: {}", e)
+                })?;
             } else {
-                return Err("Failed to open stdin for clip".into());
+                log::error!("Failed to open stdin for clip.exe");
+                return Err("Failed to open stdin for clip.exe".into());
             }
 
-            child.wait()
-                .map_err(|e| format!("Failed to wait for clip: {}", e))?;
+            let status = child.wait().map_err(|e| {
+                log::error!("Failed to wait for clip.exe process: {}", e);
+                format!("Failed to wait for clip.exe: {}", e)
+            })?;
+
+            if !status.success() {
+                log::error!("clip.exe process failed with status: {}", status);
+                return Err(format!("clip.exe failed with status: {}", status).into());
+            }
+
+            log::debug!("Successfully copied to Windows clipboard");
         },
-        os => return Err(format!("Unsupported operating system: {}", os).into())
+        os => {
+            log::error!("Unsupported operating system: {}", os);
+            return Err(format!("Unsupported operating system: {}", os).into());
+        }
     }
-    
+
+    log::trace!("Clipboard operation completed successfully");
     Ok(())
 }
 
