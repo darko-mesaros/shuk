@@ -1,7 +1,9 @@
 #!/bin/sh
 # Universal installer script
-
 set -e
+
+# REQUIREMENTS:
+# curl
 
 # Configuration
 GITHUB_REPO="darko-mesaros/shuk"
