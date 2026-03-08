@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## TODO 📋
+## [0.4.8] - 2026-03-07
+
+### Changed
+- Updated all dependencies to latest compatible versions
+- Reworked AWS SDK configuration to use native profile loading, enabling full profile support including `endpoint_url` — this allows shuk to work with S3-compatible APIs (e.g. Nebius Cloud)
+
+## [0.4.7] - 2024-12-10
 
 - TODO: Ability to delete objects
 - TODO: Ability to archive objects

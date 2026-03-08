@@ -1,9 +1,4 @@
-use aws_config::environment::credentials::EnvironmentVariableCredentialsProvider;
-use aws_config::imds::credentials::ImdsCredentialsProvider;
-use aws_config::meta::credentials::CredentialsProviderChain;
 use aws_config::meta::region::RegionProviderChain;
-use aws_config::profile::ProfileFileCredentialsProvider;
-use aws_config::profile::ProfileFileRegionProvider;
 use aws_config::BehaviorVersion;
 use aws_types::region::Region;
 
@@ -51,33 +46,20 @@ pub async fn configure_aws(
     fallback_region: String,
     profile_name: Option<&String>,
 ) -> aws_config::SdkConfig {
-    let profile = profile_name.map(|s| s.as_str()).unwrap_or("default");
-    let region_provider = RegionProviderChain::first_try(
-        ProfileFileRegionProvider::builder()
-            .profile_name(profile)
-            .build(),
-    )
-    .or_else(aws_config::environment::EnvironmentVariableRegionProvider::new())
-    .or_else(aws_config::imds::region::ImdsRegionProvider::builder().build())
-    .or_else(Region::new(fallback_region));
+    let mut loader = aws_config::defaults(BehaviorVersion::latest());
 
-    let credentials_provider = CredentialsProviderChain::first_try(
-        "Environment",
-        EnvironmentVariableCredentialsProvider::new(),
-    )
-    .or_else(
-        "Profile",
-        ProfileFileCredentialsProvider::builder()
-            .profile_name(profile)
-            .build(),
-    )
-    .or_else("IMDS", ImdsCredentialsProvider::builder().build());
+    if let Some(profile) = profile_name.map(|s| s.as_str()) {
+        loader = loader.profile_name(profile);
+    } else {
+        let region_provider = RegionProviderChain::first_try(
+            aws_config::environment::EnvironmentVariableRegionProvider::new(),
+        )
+        .or_else(aws_config::imds::region::ImdsRegionProvider::builder().build())
+        .or_else(Region::new(fallback_region));
+        loader = loader.region(region_provider);
+    }
 
-    aws_config::defaults(BehaviorVersion::latest())
-        .credentials_provider(credentials_provider)
-        .region(region_provider)
-        .load()
-        .await
+    loader.load().await
 }
 
 //======================================== END AWS
