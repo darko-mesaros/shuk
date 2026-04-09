@@ -1,0 +1,75 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Shuk password-protected file sharing frontend
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: The S3 bucket name configured in shuk (from shuk.toml bucket_name)
+
+Globals:
+  Function:
+    Timeout: 10
+    Runtime: python3.12
+    MemorySize: 128
+
+Resources:
+  SharesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: shuk-password-shares
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: share_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: share_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expiry_ttl
+        Enabled: true
+
+  ShareApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 10
+        ThrottlingRateLimit: 5
+
+  ShareFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/
+      Handler: app.handler
+      Architectures:
+        - arm64
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref SharesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SharesTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource: !Sub "arn:aws:s3:::${BucketName}/*"
+      Events:
+        GetShare:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ShareApi
+            Path: /share/{share_id}
+            Method: GET
+        PostShare:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ShareApi
+            Path: /share/{share_id}
+            Method: POST
+
+Outputs:
+  FrontendUrl:
+    Description: URL for the password-protected share frontend
+    Value: !Sub "https://${ShareApi}.execute-api.${AWS::Region}.amazonaws.com"

@@ -80,6 +80,7 @@ pub struct Config {
     pub aws_profile: Option<String>,
     pub use_clipboard: Option<bool>,
     pub fallback_region: Option<String>,
+    pub password_frontend_url: Option<String>,
 }
 
 // This function exists so we can append "/" to any prefix we read from the configuration file.
@@ -114,19 +115,15 @@ impl Config {
         if check_for_config() {
             let _contents: String = match fs::read_to_string(config_file_path) {
                 Ok(c) => {
-                    let config: Config = toml::from_str::<Config>(&c).unwrap();
+                    let config: Config = toml::from_str::<Config>(&c)?;
                     return Ok(config);
                 }
                 Err(e) => {
-                    eprintln!("Could not read config file! {}", e);
-                    eprintln!("Your configuration file needs to be in $HOME/.config/shuk/shuk.toml; Please run the configuration command: shuk --init");
-                    exit(1);
+                    return Err(anyhow::anyhow!("Could not read config file: {}", e));
                 }
             };
         } else {
-            eprintln!("Could not read config file!");
-            eprintln!("Your configuration file needs to be in $HOME/.config/shuk/shuk.toml; Please run the configuration command: shuk --init");
-            exit(1);
+            return Err(anyhow::anyhow!("Config file not found. Run 'shuk --init' to create it."));
         }
     }
 }
@@ -217,6 +214,32 @@ pub async fn initialize_config() -> Result<(), anyhow::Error> {
 
 pub fn print_warning(s: &str) {
     println!("{}", s.yellow());
+}
+
+/// Formats errors into user-friendly messages
+pub fn format_aws_error(e: &dyn std::fmt::Display) -> String {
+    let msg = e.to_string();
+    if msg.contains("credentials") || msg.contains("InvalidConfiguration") || msg.contains("credentials-login") {
+        "AWS credentials error. Please check your credentials:\n  • Run 'aws configure' to set up credentials\n  • Or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables\n  • Or ensure your AWS profile is correctly configured in shuk.toml".to_string()
+    } else if msg.contains("ExpiredToken") || msg.contains("expired") || msg.contains("security token") {
+        "AWS session has expired. Please re-authenticate:\n  • Run 'aws sso login' if using SSO\n  • Or refresh your credentials".to_string()
+    } else if msg.contains("dispatch failure") || msg.contains("DispatchFailure") {
+        "Could not connect to AWS. Please check your credentials and network connection:\n  • Run 'aws configure' to set up credentials\n  • Or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables\n  • Or ensure your AWS profile is correctly configured in shuk.toml".to_string()
+    } else if msg.contains("NoSuchBucket") {
+        "S3 bucket not found. Check 'bucket_name' in ~/.config/shuk/shuk.toml".to_string()
+    } else if msg.contains("NoSuchKey") {
+        "File not found in S3. It may have been deleted.".to_string()
+    } else if msg.contains("AccessDenied") || msg.contains("Forbidden") || msg.contains("Access Denied") {
+        "Access denied. Your AWS credentials don't have permission for this operation.".to_string()
+    } else if msg.contains("Could not find CloudFormation stack") {
+        format!("Password-sharing infrastructure not deployed.\n  Run 'shuk --deploy-infra' to set it up.")
+    } else if msg.contains("config") && (msg.contains("read") || msg.contains("parse") || msg.contains("not found") || msg.contains("No such file")) {
+        "Could not load shuk configuration.\n  Run 'shuk --init' to create your config file at ~/.config/shuk/shuk.toml".to_string()
+    } else if msg.contains("ResourceNotFoundException") || msg.contains("Table") && msg.contains("not found") {
+        "DynamoDB table not found. The infrastructure may not be deployed.\n  Run 'shuk --deploy-infra' to set it up.".to_string()
+    } else {
+        msg
+    }
 }
 
 // Store the prisigned url into clipboard
@@ -356,12 +379,20 @@ pub fn set_into_clipboard(s: String) -> Result<(), Box<dyn std::error::Error>> {
 #[derive(Debug, Parser, Default)]
 #[command(version, about, long_about = None)]
 pub struct Args {
-    #[arg(required_unless_present("init"))]
+    #[arg(required_unless_present_any(["init", "deploy_infra", "destroy_infra", "infra_status"]))]
     pub filename: Option<PathBuf>,
     // the init flag. So we can copy the config files locally
     #[arg(long, conflicts_with("filename"))]
     pub init: bool,
     #[arg(short, long, help = "Enable verbose logging")]
     pub verbose: bool,
+    #[arg(long, help = "Password-protect the shared file")]
+    pub password: Option<String>,
+    #[arg(long, help = "Deploy the password-sharing infrastructure")]
+    pub deploy_infra: bool,
+    #[arg(long, help = "Destroy the password-sharing infrastructure")]
+    pub destroy_infra: bool,
+    #[arg(long, help = "Check the status of deployed infrastructure")]
+    pub infra_status: bool,
 }
 //=========================ALPHA=============== END ARGUMENT PARSING

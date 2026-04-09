@@ -9,4 +9,5 @@ presigned_time = 86400
 aws_profile = "default"
 use_clipboard = false
 fallback_region = "us-east-1"
+# password_frontend_url = "https://your-api-id.execute-api.us-east-1.amazonaws.com"
 "#;

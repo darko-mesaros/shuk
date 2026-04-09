@@ -1,9 +1,12 @@
 pub mod constants;
 pub mod file_management;
+pub mod infra;
+pub mod password;
 pub mod upload;
 pub mod utils;
 
 use clap::Parser;
+use colored::Colorize;
 use std::io;
 use std::io::Write;
 use upload::upload_object;
@@ -13,6 +16,14 @@ use utils::print_warning;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    if let Err(e) = run().await {
+        eprintln!("❌ {}", utils::format_aws_error(&e));
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+async fn run() -> Result<(), anyhow::Error> {
     // Configure Logging
     let arguments = utils::Args::parse();
     utils::setup_logging(arguments.verbose);
@@ -56,17 +67,22 @@ async fn main() -> Result<(), anyhow::Error> {
         std::process::exit(0);
     }
 
+    // Handle infra commands
+    if arguments.deploy_infra {
+        infra::deploy_infra().await?;
+        std::process::exit(0);
+    }
+    if arguments.destroy_infra {
+        infra::destroy_infra().await?;
+        std::process::exit(0);
+    }
+    if arguments.infra_status {
+        infra::infra_status().await?;
+        std::process::exit(0);
+    }
+
     // parse configuration
-    let shuk_config = match utils::Config::load_config() {
-        Ok(config) => {
-            log::trace!("The configuration is loaded from the file: {:#?}", &config);
-            config
-        },
-        Err(e) => {
-            eprintln!("Failed to load configuration. Make sure that your config file is located at ~/.config/shuk: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let shuk_config = utils::Config::load_config()?;
     // configure aws
     let config = utils::configure_aws(
         shuk_config
@@ -150,7 +166,7 @@ async fn main() -> Result<(), anyhow::Error> {
         }
         // The SDK call failed
         Err(e) => {
-            eprintln!("Error: Could not determine if a the file exists - {}", e);
+            log::warn!("Could not check if file exists: {}", e);
             false
         }
     };
@@ -166,15 +182,84 @@ async fn main() -> Result<(), anyhow::Error> {
     .await
     {
         Ok(presigned_url) => {
-            if shuk_config.use_clipboard.unwrap_or(false) {
+            if arguments.password.is_some() {
+                // Check if deployed infra bucket matches current config
+                if let Some(state) = infra::InfraState::load() {
+                    if state.bucket_name != shuk_config.bucket_name {
+                        eprintln!("{}", "========================================".yellow());
+                        eprintln!("{}", "⚠️  Bucket mismatch detected!".yellow().bold());
+                        eprintln!(
+                            "  Your shuk.toml uses bucket: {}",
+                            shuk_config.bucket_name.cyan()
+                        );
+                        eprintln!(
+                            "  But the deployed infra is scoped to: {}",
+                            state.bucket_name.cyan()
+                        );
+                        eprintln!("  The recipient won't be able to download the file.");
+                        eprintln!();
+                        eprintln!(
+                            "  Run {} to update the infrastructure.",
+                            "shuk --deploy-infra".green().bold()
+                        );
+                        eprintln!("{}", "========================================".yellow());
+                        std::process::exit(1);
+                    }
+                }
+
+                // Password-protected sharing flow
+                let pw_text = arguments.password.as_ref().unwrap();
+                let pw_hash = password::hash_password(pw_text);
+                let share_id = uuid::Uuid::new_v4().to_string();
+
+                // S3 region (where the file lives)
+                let s3_region = config
+                    .region()
+                    .map(|r| r.as_ref().to_string())
+                    .unwrap_or_else(|| "us-east-1".to_string());
+
+                // Resolve frontend URL and infra region
+                let (frontend_url, infra_region) =
+                    password::resolve_frontend_url(&shuk_config, &config).await?;
+
+                // DynamoDB client must target the infra region (where the stack is deployed)
+                let infra_config = utils::configure_aws(
+                    infra_region.clone(),
+                    shuk_config.aws_profile.as_ref(),
+                )
+                .await;
+                let dynamo_client = aws_sdk_dynamodb::Client::new(&infra_config);
+
+                password::create_share(
+                    &dynamo_client,
+                    &share_id,
+                    &pw_hash,
+                    &shuk_config.bucket_name,
+                    &key_full,
+                    shuk_config.presigned_time,
+                    &s3_region,
+                )
+                .await?;
+
+                let share_url = format!("{}/share/{}", frontend_url.trim_end_matches('/'), share_id);
+
+                println!("========================================");
+                println!("🔒 | Password-protected share created:");
+                println!("🔒 | {}", share_url);
+
+                if shuk_config.use_clipboard.unwrap_or(false) {
+                    if let Err(e) = utils::set_into_clipboard(share_url) {
+                        eprintln!("Error setting clipboard: {}", e);
+                    }
+                }
+            } else if shuk_config.use_clipboard.unwrap_or(false) {
                 if let Err(e) = utils::set_into_clipboard(presigned_url) {
                     eprintln!("Error setting clipboard: {}", e);
                 }
             }
         }
         Err(e) => {
-            eprintln!("Error uploading file: {}", e);
-            std::process::exit(1);
+            return Err(e);
         }
     }
 

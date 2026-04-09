@@ -23,15 +23,45 @@ Arguments:
   [FILENAME]
 
 Options:
-      --init
-  -v, --verbose  Enable verbose logging
-  -h, --help     Print help
-  -V, --version  Print version
+      --init                 
+      --password <PASSWORD>  Password-protect the shared file
+      --deploy-infra         Deploy the password-sharing infrastructure
+      --destroy-infra        Destroy the password-sharing infrastructure
+      --infra-status         Check the status of deployed infrastructure
+  -v, --verbose              Enable verbose logging
+  -h, --help                 Print help
+  -V, --version              Print version
 ```
 
 Just pass the filename as the argument to `shuk`:
 ```bash
 shuk filename.bla
+```
+
+### Password-Protected Sharing 🔒
+
+Share a file with password protection:
+```bash
+shuk secret_doc.pdf --password mysecretpass
+```
+
+This uploads the file to S3 and generates a link to a password-protected frontend. The recipient must enter the correct password to download the file. After 5 wrong attempts, the link is permanently locked.
+
+**One-time setup:** Deploy the serverless frontend:
+```bash
+shuk --deploy-infra
+```
+
+This guided wizard verifies your AWS credentials, deploys the serverless backend (API Gateway + Lambda + DynamoDB), and configures everything automatically. No SAM CLI or CloudFormation knowledge needed.
+
+To check the status of your deployment:
+```bash
+shuk --infra-status
+```
+
+To tear it all down:
+```bash
+shuk --destroy-infra
 ```
 
 ## Configuration 🔧
