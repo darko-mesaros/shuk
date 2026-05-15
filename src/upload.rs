@@ -17,7 +17,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use http_body::{Body, SizeHint};
+use http_body::{Body, Frame, SizeHint};
 
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 
@@ -67,7 +67,7 @@ impl ProgressBody<SdkBody> {
         let value = value.map(|body| {
             let len = body.content_length().expect("upload body sized"); // TODO:panics
             let body = ProgressBody::new(body, len);
-            SdkBody::from_body_0_4(body)
+            SdkBody::from_body_1_x(body)
         });
         Ok(value)
     }
@@ -105,16 +105,17 @@ where
     type Data = Bytes;
     type Error = aws_smithy_types::body::Error;
 
-    fn poll_data(
+    fn poll_frame(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
         let mut this = self.project();
-        let result = match this.inner.as_mut().poll_data(cx) {
-            //match this.inner.poll_data(cx) {
-            Poll::Ready(Some(Ok(data))) => {
-                this.progress_tracker.track(data.len() as u64);
-                Poll::Ready(Some(Ok(data)))
+        match this.inner.as_mut().poll_frame(cx) {
+            Poll::Ready(Some(Ok(frame))) => {
+                if let Some(data) = frame.data_ref() {
+                    this.progress_tracker.track(data.len() as u64);
+                }
+                Poll::Ready(Some(Ok(frame)))
             }
             Poll::Ready(None) => {
                 // TODO: Figure out how to print something
@@ -123,18 +124,10 @@ where
             }
             Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
             Poll::Pending => Poll::Pending,
-        };
-        result
+        }
     }
 
-    fn poll_trailers(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<http::HeaderMap>, Self::Error>> {
-        self.project().inner.poll_trailers(cx)
-    }
-
-    fn size_hint(&self) -> http_body::SizeHint {
+    fn size_hint(&self) -> SizeHint {
         SizeHint::with_exact(self.progress_tracker.content_length)
     }
 }

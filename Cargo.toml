@@ -17,30 +17,30 @@ exclude = [
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
-pkg-config = "0.3.31"
+pkg-config = "0.3.33"
 
 [dependencies]
-anyhow = "1.0.80"
-aws-config = "1.5.10"
-aws-sdk-s3 = { version = "1.61.0", features = ["rt-tokio"] }
-aws-smithy-runtime-api = { version = "1.7.3", features = ["client"] }
-aws-smithy-types = { version = "1.2.9", features = ["http-body-0-4-x"] }
-aws-types = "1.3.3"
-bytes = "1.5.0"
-chrono = "0.4.38"
-clap = { version = "4.5.2", features = ["derive"] }
-colored = "2.1.0"
-dirs = "5.0.1"
-env_logger = "0.11.5"
-http = "0.2.12"
-http-body = "0.4.6"
-indicatif = "0.17.8"
-log = "0.4.22"
-md5 = "0.7.0"
-pin-project = "1.1.5"
-serde = { version = "1.0.197", features = ["derive"] }
-serde_derive = "1.0.197"
-tokio = { version = "1.36.0", features = ["full"] }
-toml = "0.8.11"
-tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+anyhow = "1.0.102"
+aws-config = "1.8.16"
+aws-sdk-s3 = { version = "1.132.0", features = ["rt-tokio"] }
+aws-smithy-runtime-api = { version = "1.12.0", features = ["client"] }
+aws-smithy-types = { version = "1.4.7", features = ["http-body-1-x"] }
+aws-types = "1.3.15"
+bytes = "1.11.1"
+chrono = "0.4.44"
+clap = { version = "4.6.1", features = ["derive"] }
+colored = "3.1.1"
+dirs = "6.0.0"
+env_logger = "0.11.10"
+http = "1.4.0"
+http-body = "1.0.1"
+indicatif = "0.18.4"
+log = "0.4.29"
+md5 = "0.8.0"
+pin-project = "1.1.13"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_derive = "1.0.228"
+tokio = { version = "1.52.3", features = ["full"] }
+toml = "1.1.2"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
