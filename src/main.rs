@@ -150,10 +150,25 @@ async fn main() -> Result<(), anyhow::Error> {
         }
         // The SDK call failed
         Err(e) => {
+            if arguments.upload_only {
+                log::trace!("Upload-only mode: S3 existence check failed, exiting with error.");
+                eprintln!("Error: Could not determine if the file exists - {}", e);
+                std::process::exit(1);
+            }
             eprintln!("Error: Could not determine if a the file exists - {}", e);
             false
         }
     };
+
+    // Upload-only early exit: file already exists and matches
+    if arguments.upload_only && just_upload {
+        log::trace!("Upload-only mode: file already exists in S3 and matches, no action needed.");
+        println!("========================================");
+        println!("✅ | File already exists in S3: {}", key_file_name);
+        println!("✅ | No action taken (upload-only mode)");
+        println!("========================================");
+        std::process::exit(0);
+    }
 
     match upload_object(
         &s3_client,
@@ -161,16 +176,21 @@ async fn main() -> Result<(), anyhow::Error> {
         key_file_name,
         file_tags,
         just_upload,
+        arguments.upload_only,
         &shuk_config,
     )
     .await
     {
-        Ok(presigned_url) => {
+        Ok(Some(presigned_url)) => {
             if shuk_config.use_clipboard.unwrap_or(false) {
                 if let Err(e) = utils::set_into_clipboard(presigned_url) {
                     eprintln!("Error setting clipboard: {}", e);
                 }
             }
+        }
+        Ok(None) => {
+            // Upload-only mode succeeded — no presigned URL to handle
+            log::trace!("Upload-only mode: presigned URL generation was skipped, clipboard operations skipped.");
         }
         Err(e) => {
             eprintln!("Error uploading file: {}", e);

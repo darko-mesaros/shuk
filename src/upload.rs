@@ -139,8 +139,9 @@ pub async fn upload_object(
     key: &str,
     tags: file_management::ObjectTags,
     just_presign: bool,
+    upload_only: bool,
     shuk_config: &utils::Config,
-) -> Result<String, anyhow::Error> {
+) -> Result<Option<String>, anyhow::Error> {
     // Getting file info so we can determine if we will do multi-part or not
     log::trace!(
         "Start of uploading {:?} to {}",
@@ -174,7 +175,18 @@ pub async fn upload_object(
     log::trace!("Full Prefix key: {}", &pref_key);
 
     // We should only presign the file
-    let presigned_url: String = if just_presign {
+    if just_presign {
+        if upload_only {
+            // just_presign + upload_only: should not occur in practice (handled in main),
+            // but for safety return Ok(None) with appropriate messaging
+            log::trace!("just_presign and upload_only both true — skipping presign.");
+            println!("========================================");
+            println!("✅ | File uploaded: {}, to S3 Bucket: {}", key, &shuk_config.bucket_name);
+            println!("✅ | No presigned URL generated (upload-only mode)");
+            println!("========================================");
+            return Ok(None);
+        }
+
         log::trace!("The file needs to only be presigned.");
 
         let presigned_url = file_management::presign_file(
@@ -189,174 +201,182 @@ pub async fn upload_object(
         println!("📋 | Your file is already uploaded, re-pre-signing: ");
         println!("📋 | {}", presigned_url);
 
-        presigned_url
-    } else {
-        log::trace!("The file needs to be uploaded.");
-        // Actually upload the file
-        // We need to do multi-part upload if file is larger than 4GB
-        if file_size > 4294967296 {
-            log::trace!(
-                "The file is bigger than 4294967296. Size: {}. Using multi-part upload.",
-                &file_size
-            );
+        return Ok(Some(presigned_url));
+    }
 
-            println!("========================================");
-            println!("💾 | File size is bigger than 4GB");
-            println!("💾 | Using multi-part upload");
-            println!(
-                "🚀 | Uploading file: {}, to S3 Bucket: {} | 🚀",
-                key, &shuk_config.bucket_name
-            );
-            println!("========================================");
+    log::trace!("The file needs to be uploaded.");
+    // Actually upload the file
+    // We need to do multi-part upload if file is larger than 4GB
+    if file_size > 4294967296 {
+        log::trace!(
+            "The file is bigger than 4294967296. Size: {}. Using multi-part upload.",
+            &file_size
+        );
 
-            // A new bar is created here as we cannot use the same approach as with non multi-part
-            // uploads
-            let bar = ProgressBar::new(file_size);
-            bar.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
-                .unwrap()
-                .with_key("eta", |state: &ProgressState, w: &mut dyn Write| write!(w,"{:.1}s", state.eta().as_secs_f64()).unwrap())
-                .progress_chars("#>-"));
+        println!("========================================");
+        println!("💾 | File size is bigger than 4GB");
+        println!("💾 | Using multi-part upload");
+        println!(
+            "🚀 | Uploading file: {}, to S3 Bucket: {} | 🚀",
+            key, &shuk_config.bucket_name
+        );
+        println!("========================================");
 
-            let multipart_upload_res: CreateMultipartUploadOutput = client
-                .create_multipart_upload()
+        // A new bar is created here as we cannot use the same approach as with non multi-part
+        // uploads
+        let bar = ProgressBar::new(file_size);
+        bar.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+            .unwrap()
+            .with_key("eta", |state: &ProgressState, w: &mut dyn Write| write!(w,"{:.1}s", state.eta().as_secs_f64()).unwrap())
+            .progress_chars("#>-"));
+
+        let multipart_upload_res: CreateMultipartUploadOutput = client
+            .create_multipart_upload()
+            .bucket(&shuk_config.bucket_name)
+            .key(&pref_key)
+            .set_tagging(Some(tags.to_string()))
+            .send()
+            .await?;
+
+        let upload_id = multipart_upload_res
+            .upload_id()
+            .ok_or_else(|| anyhow::anyhow!("Failed to get upload ID"))?;
+        log::trace!(
+            "Generated the upload_id for multi-part uploads: {}",
+            &upload_id
+        );
+
+        let mut completed_parts = Vec::new();
+        let mut part_number = 1;
+        let mut file_position: u64 = 0;
+
+        // main loop for file chunks
+        log::trace!("Main loop for uploading file chunks starting...");
+        while file_position < file_size {
+            log::trace!("File Position: {}", &file_position);
+            let bytes_remaining = file_size - file_position;
+            log::trace!("Bytes Remaining: {}", &bytes_remaining);
+            let part_size = std::cmp::min(bytes_remaining, PART_SIZE);
+            log::trace!("Size of part: {}", &part_size);
+            log::trace!("Part number : {}", &part_number);
+
+            let mut part_data = vec![0; part_size as usize];
+            if let Err(e) = file.read_exact(&mut part_data) {
+                return Err(anyhow::anyhow!("Failed to read file: {}", e));
+            }
+
+            let stream = ByteStream::read_from()
+                .path(file_name)
+                .offset(file_position)
+                .length(Length::Exact(part_size))
+                .build()
+                .await
+                .unwrap();
+
+            bar.set_position(file_position);
+
+            let upload_part_res = client
+                .upload_part()
                 .bucket(&shuk_config.bucket_name)
                 .key(&pref_key)
-                .set_tagging(Some(tags.to_string()))
+                .upload_id(upload_id)
+                .part_number(part_number)
+                .body(stream)
                 .send()
                 .await?;
 
-            let upload_id = multipart_upload_res
-                .upload_id()
-                .ok_or_else(|| anyhow::anyhow!("Failed to get upload ID"))?;
-            log::trace!(
-                "Generated the upload_id for multi-part uploads: {}",
-                &upload_id
-            );
-
-            let mut completed_parts = Vec::new();
-            let mut part_number = 1;
-            let mut file_position: u64 = 0;
-
-            // main loop for file chunks
-            log::trace!("Main loop for uploading file chunks starting...");
-            while file_position < file_size {
-                log::trace!("File Position: {}", &file_position);
-                let bytes_remaining = file_size - file_position;
-                log::trace!("Bytes Remaining: {}", &bytes_remaining);
-                let part_size = std::cmp::min(bytes_remaining, PART_SIZE);
-                log::trace!("Size of part: {}", &part_size);
-                log::trace!("Part number : {}", &part_number);
-
-                let mut part_data = vec![0; part_size as usize];
-                if let Err(e) = file.read_exact(&mut part_data) {
-                    return Err(anyhow::anyhow!("Failed to read file: {}", e));
-                }
-
-                let stream = ByteStream::read_from()
-                    .path(file_name)
-                    .offset(file_position)
-                    .length(Length::Exact(part_size))
-                    .build()
-                    .await
-                    .unwrap();
-
-                bar.set_position(file_position);
-
-                let upload_part_res = client
-                    .upload_part()
-                    .bucket(&shuk_config.bucket_name)
-                    .key(&pref_key)
-                    .upload_id(upload_id)
-                    .part_number(part_number)
-                    .body(stream)
-                    .send()
-                    .await?;
-
-                let completed_part = CompletedPart::builder()
-                    .part_number(part_number)
-                    .e_tag(upload_part_res.e_tag.expect("Was unable to upload part"))
-                    .build();
-
-                completed_parts.push(completed_part);
-
-                file_position += part_size;
-                part_number += 1;
-            }
-            log::trace!("Completed chunk uploads");
-
-            let completed_multipart_upload = CompletedMultipartUpload::builder()
-                .set_parts(Some(completed_parts))
+            let completed_part = CompletedPart::builder()
+                .part_number(part_number)
+                .e_tag(upload_part_res.e_tag.expect("Was unable to upload part"))
                 .build();
 
-            log::trace!("Sending complete_multipart_upload API call to S3 ");
-            let _complete_multipart_upload_res = client
-                .complete_multipart_upload()
-                .bucket(&shuk_config.bucket_name)
-                .key(&pref_key)
-                .multipart_upload(completed_multipart_upload)
-                .upload_id(upload_id)
-                .send()
-                .await
-                .unwrap();
-        } else {
-            // There is no need for multi-part uploads, as the file is smaller than 4GB
-            log::trace!(
-                "The file is smaller than 4294967296. Size: {}. No need for multi-part upload.",
-                &file_size
-            );
-            println!("========================================");
-            println!(
-                "🚀 | Uploading file: {}, to S3 Bucket: {} | 🚀",
-                key, &shuk_config.bucket_name
-            );
-            println!("========================================");
+            completed_parts.push(completed_part);
 
-            log::trace!("Reading file into body");
-            let body = match ByteStream::read_from()
-                .path(Path::new(file_name))
-                .buffer_size(2048)
-                .build()
-                .await
-            {
-                Ok(stream) => stream,
-                Err(e) => return Err(anyhow::anyhow!("Failed to create ByteStream: {}", e)),
-            };
-
-            log::trace!("Sending put_object API call to S3");
-            let request = client
-                .put_object()
-                .bucket(&shuk_config.bucket_name)
-                .key(&pref_key)
-                .set_tagging(Some(tags.to_string()))
-                .body(body);
-
-            // for the progress bar
-            let customized = request
-                .customize()
-                .map_request(ProgressBody::<SdkBody>::replace);
-            let out = customized.send().await?;
-            log::debug!("PutObjectOutput: {:?}", out);
+            file_position += part_size;
+            part_number += 1;
         }
+        log::trace!("Completed chunk uploads");
 
-        // NOTE: Not sure if this should exist in this upload_object function
-        // or do I move the logic away from here into the main.rs or some
-        // wrapped function
-        //
-        // presign the file and return the URL
-        let presigned_url = file_management::presign_file(
-            client,
-            &shuk_config.bucket_name,
-            key,
-            shuk_config.bucket_prefix.clone(),
-            shuk_config.presigned_time,
-        )
-        .await?;
+        let completed_multipart_upload = CompletedMultipartUpload::builder()
+            .set_parts(Some(completed_parts))
+            .build();
+
+        log::trace!("Sending complete_multipart_upload API call to S3 ");
+        let _complete_multipart_upload_res = client
+            .complete_multipart_upload()
+            .bucket(&shuk_config.bucket_name)
+            .key(&pref_key)
+            .multipart_upload(completed_multipart_upload)
+            .upload_id(upload_id)
+            .send()
+            .await
+            .unwrap();
+    } else {
+        // There is no need for multi-part uploads, as the file is smaller than 4GB
+        log::trace!(
+            "The file is smaller than 4294967296. Size: {}. No need for multi-part upload.",
+            &file_size
+        );
         println!("========================================");
-        println!("📋 | Good job, here is your file: ");
-        println!("📋 | {}", presigned_url);
+        println!(
+            "🚀 | Uploading file: {}, to S3 Bucket: {} | 🚀",
+            key, &shuk_config.bucket_name
+        );
+        println!("========================================");
 
-        presigned_url
-    };
+        log::trace!("Reading file into body");
+        let body = match ByteStream::read_from()
+            .path(Path::new(file_name))
+            .buffer_size(2048)
+            .build()
+            .await
+        {
+            Ok(stream) => stream,
+            Err(e) => return Err(anyhow::anyhow!("Failed to create ByteStream: {}", e)),
+        };
 
-    Ok(presigned_url)
+        log::trace!("Sending put_object API call to S3");
+        let request = client
+            .put_object()
+            .bucket(&shuk_config.bucket_name)
+            .key(&pref_key)
+            .set_tagging(Some(tags.to_string()))
+            .body(body);
+
+        // for the progress bar
+        let customized = request
+            .customize()
+            .map_request(ProgressBody::<SdkBody>::replace);
+        let out = customized.send().await?;
+        log::debug!("PutObjectOutput: {:?}", out);
+    }
+
+    // After upload completes, handle upload-only vs normal mode
+    if upload_only {
+        log::trace!("Upload-only mode: skipping presign_file call.");
+        println!("========================================");
+        println!("✅ | File uploaded: {}, to S3 Bucket: {}", key, &shuk_config.bucket_name);
+        println!("✅ | No presigned URL generated (upload-only mode)");
+        println!("========================================");
+        return Ok(None);
+    }
+
+    // NOTE: Not sure if this should exist in this upload_object function
+    // or do I move the logic away from here into the main.rs or some
+    // wrapped function
+    //
+    // presign the file and return the URL
+    let presigned_url = file_management::presign_file(
+        client,
+        &shuk_config.bucket_name,
+        key,
+        shuk_config.bucket_prefix.clone(),
+        shuk_config.presigned_time,
+    )
+    .await?;
+    println!("========================================");
+    println!("📋 | Good job, here is your file: ");
+    println!("📋 | {}", presigned_url);
+
+    Ok(Some(presigned_url))
 }
