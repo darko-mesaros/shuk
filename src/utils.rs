@@ -363,5 +363,7 @@ pub struct Args {
     pub init: bool,
     #[arg(short, long, help = "Enable verbose logging")]
     pub verbose: bool,
+    #[arg(long, help = "Upload file without generating a presigned URL", conflicts_with("init"))]
+    pub upload_only: bool,
 }
 //=========================ALPHA=============== END ARGUMENT PARSING
