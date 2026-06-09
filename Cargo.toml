@@ -21,7 +21,7 @@ pkg-config = "0.3.33"
 
 [dependencies]
 anyhow = "1.0.102"
-aws-config = "1.8.16"
+aws-config = { version = "1.8.16", features = ["credentials-login"] }
 aws-sdk-s3 = { version = "1.132.0", features = ["rt-tokio"] }
 aws-smithy-runtime-api = { version = "1.12.0", features = ["client"] }
 aws-smithy-types = { version = "1.4.7", features = ["http-body-1-x"] }
