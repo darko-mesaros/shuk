@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-08-11
+
+### Added
+- Automatically detect an S3 bucket's actual Region and retry once when the configured Region is wrong
+- Include the S3 operation, URI, Region, HTTP status, AWS error details, and request ID in service errors
+
+### Changed
+- Updated the AWS SDK and Smithy dependencies to their latest compatible versions
+- Reworked GitHub release automation to create releases from version tag pushes and upload binaries with SHA-256 checksums
+
+### Fixed
+- Stop uploads when Shuk cannot safely determine whether an object already exists
+- Return actionable multipart upload errors instead of panicking on stream, ETag, or completion failures
+
 ## [0.4.8] - 2026-03-07
 
 ### Changed
