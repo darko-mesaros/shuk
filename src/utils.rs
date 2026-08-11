@@ -62,6 +62,16 @@ pub async fn configure_aws(
     loader.load().await
 }
 
+pub fn s3_client_for_region(
+    config: &aws_config::SdkConfig,
+    region: impl Into<String>,
+) -> aws_sdk_s3::Client {
+    let s3_config = aws_sdk_s3::config::Builder::from(config)
+        .region(Region::new(region.into()))
+        .build();
+    aws_sdk_s3::Client::from_conf(s3_config)
+}
+
 //======================================== END AWS
 //======================================== CONFIG PARSING
 //NOTE:

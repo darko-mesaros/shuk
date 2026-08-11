@@ -120,90 +120,89 @@ pub fn calculate_partial_hash(local_path: &Path) -> Result<PartialFileHash, anyh
     })
 }
 
+fn is_not_found(error: &SdkError<HeadObjectError>) -> bool {
+    error
+        .as_service_error()
+        .is_some_and(HeadObjectError::is_not_found)
+}
+
 pub async fn file_exists_in_s3(
     client: &Client,
     bucket: &str,
     key: &str,
-) -> Result<bool, anyhow::Error> {
-    log::trace!("Testing if {:?} exists in bucket {:?}", &key, &bucket);
+) -> Result<bool, crate::s3_error::S3OperationError> {
+    log::trace!("Testing if {:?} exists in bucket {:?}", key, bucket);
     match client.head_object().bucket(bucket).key(key).send().await {
         Ok(_) => {
-            log::trace!("File {:?} has been found in bucket {:?}", &key, &bucket);
+            log::trace!("File {:?} has been found in bucket {:?}", key, bucket);
             Ok(true)
         }
-        Err(err) => {
-            match err {
-                SdkError::ServiceError(err) => {
-                    match err.err() {
-                        // If the error NotFound is returned - return false
-                        HeadObjectError::NotFound(_) => {
-                            log::trace!("File {:?} not found in bucket {:?}", &key, &bucket);
-                            Ok(false)
-                        }
-                        other_err => {
-                            log::warn!("There was a service error when checking for file {:?} in bucket {:?}", &key, &bucket);
-                            Err(anyhow::anyhow!("S3 service error: {:?}", other_err))
-                        }
-                    }
-                }
-                other_err => {
-                    log::warn!(
-                        "There was a SDK when checking for file {:?} in bucket {:?}",
-                        &key,
-                        &bucket
-                    );
-                    Err(anyhow::anyhow!("S3 SDK error: {:?}", other_err))
-                }
-            }
+        Err(error) if is_not_found(&error) => {
+            log::trace!("File {:?} not found in bucket {:?}", key, bucket);
+            Ok(false)
+        }
+        Err(error) => {
+            log::warn!(
+                "Unable to determine whether file {:?} exists in bucket {:?}",
+                key,
+                bucket
+            );
+            Err(crate::s3_error::S3OperationError::from_sdk_error(
+                "HeadObject",
+                client,
+                bucket,
+                Some(key),
+                &error,
+            ))
         }
     }
 }
 
-// If you need metadata version:
 async fn get_file_metadata(
     client: &Client,
     bucket: &str,
     key: &str,
-) -> Result<Option<aws_sdk_s3::operation::head_object::HeadObjectOutput>, anyhow::Error> {
-    log::trace!("Getting file metadata for {}:{}", &bucket, &key);
+) -> Result<
+    Option<aws_sdk_s3::operation::head_object::HeadObjectOutput>,
+    crate::s3_error::S3OperationError,
+> {
+    log::trace!("Getting file metadata for {}:{}", bucket, key);
     match client.head_object().bucket(bucket).key(key).send().await {
         Ok(output) => {
             log::trace!(
                 "Metadata has been extracted for {:?} in bucket {:?}",
-                &key,
-                &bucket
+                key,
+                bucket
             );
             Ok(Some(output))
         }
-        Err(err) => {
-            match err {
-                SdkError::ServiceError(err) => match err.err() {
-                    HeadObjectError::NotFound(_) => {
-                        log::warn!("Unable to find {:?} in bucket {:?}, there seems to be an issue getting metadata", &key, &bucket);
-                        Ok(None)
-                    }
-                    other_err => {
-                        log::warn!("There was a service error when gettinf metadata for file {:?} in bucket {:?}", &key, &bucket);
-                        Err(anyhow::anyhow!("S3 service error: {:?}", other_err))
-                    }
-                },
-                other_err => {
-                    log::warn!("There was a S3 SDK error when gettinf metadata for file {:?} in bucket {:?}", &key, &bucket);
-                    Err(anyhow::anyhow!("S3 SDK error: {:?}", other_err))
-                }
-            }
+        Err(error) if is_not_found(&error) => {
+            log::warn!(
+                "File {:?} disappeared from bucket {:?} before metadata comparison",
+                key,
+                bucket
+            );
+            Ok(None)
         }
+        Err(error) => Err(crate::s3_error::S3OperationError::from_sdk_error(
+            "HeadObject",
+            client,
+            bucket,
+            Some(key),
+            &error,
+        )),
     }
 }
 
-// If you need metadata version:
 async fn get_file_tags(
     client: &Client,
     bucket: &str,
     key: &str,
-) -> Result<Option<aws_sdk_s3::operation::get_object_tagging::GetObjectTaggingOutput>, anyhow::Error>
-{
-    log::trace!("Getting file tags for {}:{}", &bucket, &key);
+) -> Result<
+    Option<aws_sdk_s3::operation::get_object_tagging::GetObjectTaggingOutput>,
+    crate::s3_error::S3OperationError,
+> {
+    log::trace!("Getting file tags for {}:{}", bucket, key);
     match client
         .get_object_tagging()
         .bucket(bucket)
@@ -213,20 +212,19 @@ async fn get_file_tags(
     {
         Ok(output) => {
             log::trace!(
-                "Tags for {} in {} were succesfully retrieved.",
-                &key,
-                &bucket
+                "Tags for {} in {} were successfully retrieved.",
+                key,
+                bucket
             );
             Ok(Some(output))
         }
-        Err(err) => {
-            log::warn!(
-                "There was a S3 Service error when getting tags for {} in {}.",
-                &key,
-                &bucket
-            );
-            Err(anyhow::anyhow!("S3 service error: {:?}", err))
-        }
+        Err(error) => Err(crate::s3_error::S3OperationError::from_sdk_error(
+            "GetObjectTagging",
+            client,
+            bucket,
+            Some(key),
+            &error,
+        )),
     }
 }
 

@@ -236,11 +236,20 @@ pub async fn upload_object(
             .key(&pref_key)
             .set_tagging(Some(tags.to_string()))
             .send()
-            .await?;
+            .await
+            .map_err(|error| {
+                crate::s3_error::S3OperationError::from_sdk_error(
+                    "CreateMultipartUpload",
+                    client,
+                    &shuk_config.bucket_name,
+                    Some(&pref_key),
+                    &error,
+                )
+            })?;
 
         let upload_id = multipart_upload_res
             .upload_id()
-            .ok_or_else(|| anyhow::anyhow!("Failed to get upload ID"))?;
+            .ok_or_else(|| anyhow::anyhow!("S3 CreateMultipartUpload returned no upload ID"))?;
         log::trace!(
             "Generated the upload_id for multi-part uploads: {}",
             &upload_id
@@ -250,7 +259,7 @@ pub async fn upload_object(
         let mut part_number = 1;
         let mut file_position: u64 = 0;
 
-        // main loop for file chunks
+        // main loop for uploading file chunks
         log::trace!("Main loop for uploading file chunks starting...");
         while file_position < file_size {
             log::trace!("File Position: {}", &file_position);
@@ -271,7 +280,14 @@ pub async fn upload_object(
                 .length(Length::Exact(part_size))
                 .build()
                 .await
-                .unwrap();
+                .map_err(|error| {
+                    anyhow::anyhow!(
+                        "Failed to read multipart upload part {} at byte {}: {}",
+                        part_number,
+                        file_position,
+                        error
+                    )
+                })?;
 
             bar.set_position(file_position);
 
@@ -283,11 +299,23 @@ pub async fn upload_object(
                 .part_number(part_number)
                 .body(stream)
                 .send()
-                .await?;
+                .await
+                .map_err(|error| {
+                    crate::s3_error::S3OperationError::from_sdk_error(
+                        "UploadPart",
+                        client,
+                        &shuk_config.bucket_name,
+                        Some(&pref_key),
+                        &error,
+                    )
+                })?;
 
+            let e_tag = upload_part_res.e_tag().ok_or_else(|| {
+                anyhow::anyhow!("S3 UploadPart returned no ETag for part {}", part_number)
+            })?;
             let completed_part = CompletedPart::builder()
                 .part_number(part_number)
-                .e_tag(upload_part_res.e_tag.expect("Was unable to upload part"))
+                .e_tag(e_tag)
                 .build();
 
             completed_parts.push(completed_part);
@@ -302,7 +330,7 @@ pub async fn upload_object(
             .build();
 
         log::trace!("Sending complete_multipart_upload API call to S3 ");
-        let _complete_multipart_upload_res = client
+        client
             .complete_multipart_upload()
             .bucket(&shuk_config.bucket_name)
             .key(&pref_key)
@@ -310,7 +338,15 @@ pub async fn upload_object(
             .upload_id(upload_id)
             .send()
             .await
-            .unwrap();
+            .map_err(|error| {
+                crate::s3_error::S3OperationError::from_sdk_error(
+                    "CompleteMultipartUpload",
+                    client,
+                    &shuk_config.bucket_name,
+                    Some(&pref_key),
+                    &error,
+                )
+            })?;
     } else {
         // There is no need for multi-part uploads, as the file is smaller than 4GB
         log::trace!(
@@ -347,7 +383,15 @@ pub async fn upload_object(
         let customized = request
             .customize()
             .map_request(ProgressBody::<SdkBody>::replace);
-        let out = customized.send().await?;
+        let out = customized.send().await.map_err(|error| {
+            crate::s3_error::S3OperationError::from_sdk_error(
+                "PutObject",
+                client,
+                &shuk_config.bucket_name,
+                Some(&pref_key),
+                &error,
+            )
+        })?;
         log::debug!("PutObjectOutput: {:?}", out);
     }
 

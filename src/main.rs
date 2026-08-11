@@ -1,5 +1,6 @@
 pub mod constants;
 pub mod file_management;
+pub mod s3_error;
 pub mod upload;
 pub mod utils;
 
@@ -67,7 +68,7 @@ async fn main() -> Result<(), anyhow::Error> {
             std::process::exit(1);
         }
     };
-    // configure aws
+    // Configure AWS and create the initial S3 client.
     let config = utils::configure_aws(
         shuk_config
             .fallback_region
@@ -77,8 +78,7 @@ async fn main() -> Result<(), anyhow::Error> {
         shuk_config.aws_profile.as_ref(),
     )
     .await;
-    // setup the bedrock-runtime client
-    let s3_client = aws_sdk_s3::Client::new(&config);
+    let mut s3_client = aws_sdk_s3::Client::new(&config);
 
     let key = arguments.filename.clone();
     let file_name = arguments
@@ -115,49 +115,76 @@ async fn main() -> Result<(), anyhow::Error> {
     };
     log::trace!("File tags defined: {:#?}", &file_tags);
 
-    let just_upload = match file_management::file_exists_in_s3(
+    let fail_file_check = |error: &crate::s3_error::S3OperationError| {
+        eprintln!(
+            "Error: Could not determine whether s3://{}/{} exists.",
+            shuk_config.bucket_name, key_full
+        );
+        eprintln!("Details: {error}");
+        eprintln!(
+            "Refusing to upload because Shuk could not safely determine whether it would replace an existing object."
+        );
+        if let Some(request_id) = error.extended_request_id() {
+            log::debug!("S3 extended request ID: {request_id}");
+        }
+        std::process::exit(1);
+    };
+
+    let object_exists = match file_management::file_exists_in_s3(
         &s3_client,
         &shuk_config.bucket_name,
         key_full.as_str(),
     )
     .await
     {
-        // Call was a success
-        Ok(o) => {
-            log::trace!("The call to check if the file exists has been a success");
-            if o {
-                // It exists - lets see if it is the same
-                if file_management::quick_compare(
-                    &file_name,
-                    &shuk_config.bucket_name,
-                    key_full.as_str(),
-                    &file_tags,
-                    &s3_client,
-                )
-                .await?
-                {
-                    // They are the same - just presing
-                    true
-                } else {
-                    // They are not the same, upload
-                    false
-                }
-            } else {
-                // File does not exist
-                // Just upload the file
-                false
+        Ok(exists) => exists,
+        Err(error) => {
+            let Some(bucket_region) = error.retry_region().map(str::to_string) else {
+                fail_file_check(&error)
+            };
+            let configured_region = error.configured_region().unwrap_or("unknown");
+            eprintln!(
+                "Warning: AWS selected region `{configured_region}`, but bucket `{}` is in `{bucket_region}`.",
+                shuk_config.bucket_name
+            );
+            eprintln!("Retrying automatically in `{bucket_region}`.");
+            eprintln!(
+                "Tip: Update your AWS region setting or set fallback_region = \"{bucket_region}\" in the Shuk configuration to avoid this extra request."
+            );
+
+            s3_client = utils::s3_client_for_region(&config, bucket_region);
+            match file_management::file_exists_in_s3(
+                &s3_client,
+                &shuk_config.bucket_name,
+                key_full.as_str(),
+            )
+            .await
+            {
+                Ok(exists) => exists,
+                Err(retry_error) => fail_file_check(&retry_error),
             }
         }
-        // The SDK call failed
-        Err(e) => {
-            if arguments.upload_only {
-                log::trace!("Upload-only mode: S3 existence check failed, exiting with error.");
-                eprintln!("Error: Could not determine if the file exists - {}", e);
-                std::process::exit(1);
-            }
-            eprintln!("Error: Could not determine if a the file exists - {}", e);
-            false
-        }
+    };
+
+    let just_upload = if object_exists {
+        file_management::quick_compare(
+            &file_name,
+            &shuk_config.bucket_name,
+            key_full.as_str(),
+            &file_tags,
+            &s3_client,
+        )
+        .await
+        .map_err(|error| {
+            anyhow::anyhow!(
+                "Could not compare the local file with s3://{}/{}: {}",
+                shuk_config.bucket_name,
+                key_full,
+                error
+            )
+        })?
+    } else {
+        false
     };
 
     // Upload-only early exit: file already exists and matches
